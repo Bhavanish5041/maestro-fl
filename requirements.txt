@@ -1,0 +1,25 @@
+# MAESTRO-FL Dependencies
+# =======================
+# Core simulation
+# traci is installed as part of SUMO — see setup.sh
+
+# RL
+gymnasium>=0.29.0
+stable-baselines3>=2.1.0
+
+# Deep Learning
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Federated Learning
+flwr>=1.5.0
+
+# Data
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Visualization
+matplotlib>=3.7.0
+
+# Utilities
+tqdm>=4.65.0

@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-06-27T15:01:59.239120+05:30 by Eclipse SUMO sumo 1.27.1
+<sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/2026-06-27-15-01-53/osm.net.xml.gz"/>
+        <route-files value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/2026-06-27-15-01-53/trips.trips.xml"/>
+        <additional-files value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/2026-06-27-15-01-53/osm_stops.add.xml"/>
+    </input>
+
+    <output>
+        <vehroute-output value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/2026-06-27-15-01-53/vehroutes.xml"/>
+        <stop-output value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/2026-06-27-15-01-53/stopinfos.xml"/>
+    </output>
+
+    <time>
+        <begin value="0.0"/>
+    </time>
+
+    <processing>
+        <ignore-route-errors value="true"/>
+        <time-to-teleport.disconnected value="0"/>
+        <default.departspeed value="0"/>
+    </processing>
+
+    <routing>
+        <device.rerouting.adaptation-interval value="0"/>
+    </routing>
+
+    <report>
+        <aggregate-warnings value="5"/>
+        <error-log value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/2026-06-27-15-01-53/trips.trips.xml.errorlog"/>
+        <no-step-log value="true"/>
+    </report>
+
+</sumoConfiguration>
+-->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vehicle id="0_subway_Green:0" type="pt_subway" depart="15.00" departLane="0" arrival="157.00">
+        <route edges="607901283#1 607901283#1"/>
+        <stop busStop="5760198466" duration="30.00"/>
+    </vehicle>
+
+    <vehicle id="1_subway_Green:1" type="pt_subway" depart="52.00" departLane="0" arrival="181.00">
+        <route edges="549256475#0 549256475#1"/>
+        <stop busStop="1565099104" duration="30.00"/>
+        <stop busStop="1070314237" duration="30.00"/>
+    </vehicle>
+
+    <vehicle id="2_subway_Green:2" type="pt_subway" depart="133.00" departLane="0" arrival="274.00">
+        <route edges="607901283#1 607901283#1"/>
+        <stop busStop="5760198466" duration="30.00"/>
+    </vehicle>
+
+    <vehicle id="5_bus_AS1:0" type="pt_bus" depart="406.00" departLane="0" arrival="431.00">
+        <route edges="462900086#0 462900086#1 462900086#2 462900086#3"/>
+    </vehicle>
+
+    <vehicle id="6_subway_Green:3" type="pt_subway" depart="441.00" departLane="0" arrival="569.00">
+        <route edges="549256475#0 549256475#1"/>
+        <stop busStop="1565099104" duration="30.00"/>
+        <stop busStop="1070314237" duration="30.00"/>
+    </vehicle>
+
+    <vehicle id="7_bus_375:0" type="pt_bus" depart="535.00" departLane="0" arrival="584.00">
+        <route edges="1350390280#1"/>
+        <stop busStop="2396394290" duration="30.00"/>
+    </vehicle>
+
+    <vehicle id="3_subway_Yellow:0" type="pt_subway" depart="165.00" departLane="0" arrival="586.00">
+        <route edges="1299917515"/>
+        <stop busStop="12040966324" duration="30.00"/>
+        <stop busStop="13046007576" duration="30.00"/>
+        <stop busStop="13046007577" duration="30.00"/>
+        <stop busStop="13046011005" duration="30.00"/>
+        <stop busStop="13046011008" duration="30.00"/>
+    </vehicle>
+
+    <vehicle id="4_subway_Yellow:1" type="pt_subway" depart="383.00" departLane="0" arrival="794.00">
+        <route edges="1299917516"/>
+        <stop busStop="13046011007" duration="30.00"/>
+        <stop busStop="13046011006" duration="30.00"/>
+        <stop busStop="13046007578" duration="30.00"/>
+        <stop busStop="13046007575" duration="30.00"/>
+        <stop busStop="13046007574" duration="30.00"/>
+    </vehicle>
+
+</routes>

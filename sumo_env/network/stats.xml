@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-06-28T09:16:19.011050+05:30 by Eclipse SUMO sumo 1.27.1
+<sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/sumo_env/network/osm.net.xml.gz"/>
+        <route-files value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/sumo_env/network/osm.passenger.trips.xml,/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/sumo_env/network/osm_pt.rou.xml"/>
+        <additional-files value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/sumo_env/network/osm.poly.xml.gz,/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/sumo_env/network/osm_stops.add.xml,/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/sumo_env/network/output.add.xml"/>
+    </input>
+
+    <output>
+        <tripinfo-output value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/sumo_env/network/tripinfos.xml"/>
+        <stop-output value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/sumo_env/network/stopinfos.xml"/>
+        <statistic-output value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/sumo_env/network/stats.xml"/>
+    </output>
+
+    <processing>
+        <ignore-route-errors value="true"/>
+        <waiting-time-memory value="1000"/>
+        <tls.actuated.jam-threshold value="30"/>
+    </processing>
+
+    <routing>
+        <device.rerouting.adaptation-steps value="18"/>
+        <device.rerouting.adaptation-interval value="10"/>
+    </routing>
+
+    <report>
+        <verbose value="true"/>
+        <duration-log.statistics value="true"/>
+        <no-step-log value="true"/>
+    </report>
+
+    <traci_server>
+        <remote-port value="38035"/>
+    </traci_server>
+
+    <random_number>
+        <seed value="42"/>
+    </random_number>
+
+    <gui_only>
+        <gui-settings-file value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/sumo_env/network/osm.view.xml"/>
+    </gui_only>
+
+</sumoConfiguration>
+-->
+
+<statistics xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/statistic_file.xsd">
+    <performance clockBegin="1782618379.03" clockEnd="1782618381.28" clockDuration="2.25" traciDuration="1.36" realTimeFactor="505.57" vehicleUpdatesPerSecond="9689.09" personUpdatesPerSecond="0.00" begin="0.00" end="1135.00" duration="1135.00"/>
+    <vehicles loaded="220" inserted="203" running="22" waiting="0"/>
+    <teleports total="1" jam="0" yield="1" wrongLane="0"/>
+    <safety collisions="0" emergencyStops="1" emergencyBraking="1"/>
+    <persons loaded="0" running="0" jammed="0"/>
+    <personTeleports total="0" abortWait="0" wrongDest="0"/>
+    <vehicleTripStatistics count="181" routeLength="1293.68" speed="12.79" duration="107.81" waitingTime="12.21" timeLoss="35.59" departDelay="0.69" departDelayWaiting="-1.00" totalTravelTime="19513.00" totalDepartDelay="125.40"/>
+    <pedestrianStatistics number="0" routeLength="0.00" duration="0.00" timeLoss="0.00"/>
+    <rideStatistics number="0"/>
+    <transportStatistics number="0"/>
+</statistics>

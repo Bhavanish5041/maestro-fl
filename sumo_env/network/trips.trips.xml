@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-06-27 15:01:59.008554 by Eclipse SUMO $Id: ptlines2flows.py v1_3_1+0313-ccb31df3eb jakob.erdmann@dlr.de 2019-09-02 13:26:32 +0200 $ v1.27.1
+<configuration>
+    <net-file value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/2026-06-27-15-01-53/osm.net.xml.gz"/>
+    <ptlines-file value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/2026-06-27-15-01-53/osm_ptlines.xml"/>
+    <ptstops-file value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/2026-06-27-15-01-53/osm_stops.add.xml"/>
+    <output-file value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/2026-06-27-15-01-53/osm_pt.rou.xml"/>
+    <stopinfos-file value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/2026-06-27-15-01-53/stopinfos.xml"/>
+    <routes-file value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/2026-06-27-15-01-53/vehroutes.xml"/>
+    <trips-file value="/home/bhavanish/.gemini/antigravity/scratch/maestro-fl/2026-06-27-15-01-53/trips.trips.xml"/>
+    <min-stops value="0"/>
+    <extend-to-fringe value="True"/>
+    <random-begin value="True"/>
+    <seed value="42"/>
+    <ignore-errors value="True"/>
+    <types value="bus,tram,subway,light_rail,train,trolleybus,monorail,minibus,share_taxi,ferry,aerialway"/>
+    <vtype-prefix value="pt_"/>
+    <verbose value="True"/>
+</configuration>
+-->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vType id="pt_bus" vClass="bus" speedFactor="0.95"/>
+    <vType id="pt_tram" vClass="tram" speedFactor="1.0"/>
+    <vType id="pt_train" vClass="rail"/>
+    <vType id="pt_subway" vClass="subway"/>
+    <vType id="pt_light_rail" vClass="rail_urban"/>
+    <vType id="pt_monorail" vClass="rail_urban"/>
+    <vType id="pt_trolleybus" vClass="bus" speedFactor="0.95"/>
+    <vType id="pt_minibus" vClass="bus" speedFactor="0.95"/>
+    <vType id="pt_share_taxi" vClass="taxi" speedFactor="0.95"/>
+    <vType id="pt_aerialway" vClass="cable_car" length="2.5" width="2" personCapacity="4"/>
+    <vType id="pt_ferry" vClass="ship"/>
+    <trip id="0_subway_Green:0" type="pt_subway" depart="15.0" departLane="best" from="607901283#1" to="607901283#0">
+        <stop busStop="5760198466" duration="30"/>  <!-- Banashankari -->
+        <stop busStop="5760198467" duration="30"/>  <!-- Rashtreeya Vidyalaya Road -->
+    </trip>
+    <trip id="1_subway_Green:1" type="pt_subway" depart="52.0" departLane="best" from="549256475#0" to="549256475#1">
+        <stop busStop="1565099104" duration="30"/>  <!-- Rashtreeya Vidyalaya Road -->
+        <stop busStop="1070314237" duration="30"/>  <!-- Banashankari -->
+    </trip>
+    <trip id="2_subway_Green:2" type="pt_subway" depart="133.0" departLane="best" from="607901283#1" to="607901283#0">
+        <stop busStop="5760198466" duration="30"/>  <!-- Banashankari -->
+        <stop busStop="5760198467" duration="30"/>  <!-- Rashtreeya Vidyalaya Road -->
+    </trip>
+    <trip id="3_subway_Yellow:0" type="pt_subway" depart="165.0" departLane="best" from="1299917515" to="1299917515">
+        <stop busStop="12040966324" duration="30"/>  <!-- Central Silk Board -->
+        <stop busStop="13046007576" duration="30"/>  <!-- BTM Layout -->
+        <stop busStop="13046007577" duration="30"/>  <!-- Jayadeva Hospital -->
+        <stop busStop="13046011005" duration="30"/>  <!-- Ragigudda -->
+        <stop busStop="13046011008" duration="30"/>  <!-- Rashtreeya Vidyalaya Road -->
+    </trip>
+    <trip id="4_subway_Yellow:1" type="pt_subway" depart="383.0" departLane="best" from="1299917516" to="1299917516">
+        <stop busStop="13046011007" duration="30"/>  <!-- Rashtreeya Vidyalaya Road -->
+        <stop busStop="13046011006" duration="30"/>  <!-- Ragigudda -->
+        <stop busStop="13046007578" duration="30"/>  <!-- Jayadeva Hospital -->
+        <stop busStop="13046007575" duration="30"/>  <!-- BTM Layout -->
+        <stop busStop="13046007574" duration="30"/>  <!-- Central Silk Board -->
+    </trip>
+    <trip id="5_bus_AS1:0" type="pt_bus" depart="406.0" departLane="best" from="462900086#0" to="462900086#3">
+    </trip>
+    <trip id="6_subway_Green:3" type="pt_subway" depart="441.0" departLane="best" from="549256475#0" to="549256475#1">
+        <stop busStop="1565099104" duration="30"/>  <!-- Rashtreeya Vidyalaya Road -->
+        <stop busStop="1070314237" duration="30"/>  <!-- Banashankari -->
+    </trip>
+    <trip id="7_bus_375:0" type="pt_bus" depart="535.0" departLane="best" from="1350390280#1" to="1350390280#1">
+        <stop busStop="2396394290" duration="30"/>  <!-- Jayanagara 40th Cross -->
+    </trip>
+</routes>

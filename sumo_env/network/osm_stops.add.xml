@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-06-27T15:01:58.446684+05:30 by Eclipse SUMO netconvert 1.27.1
+<netconvertConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/netconvertConfiguration.xsd">
+
+    <input>
+        <type-files value="${SUMO_HOME}/data/typemap/osmNetconvert.typ.xml,${SUMO_HOME}/data/typemap/osmNetconvertShips.typ.xml,${SUMO_HOME}/data/typemap/osmNetconvertAerialway.typ.xml"/>
+        <osm-files value="osm_bbox.osm.xml.gz"/>
+    </input>
+
+    <output>
+        <output-file value="osm.net.xml.gz"/>
+        <output.street-names value="true"/>
+        <output.original-names value="true"/>
+        <ptstop-output value="osm_stops.add.xml"/>
+        <ptline-output value="osm_ptlines.xml"/>
+        <ptline-clean-up value="true"/>
+    </output>
+
+    <projection>
+        <proj.utm value="true"/>
+    </projection>
+
+    <processing>
+        <geometry.remove value="true"/>
+    </processing>
+
+    <tls_building>
+        <tls.discard-simple value="true"/>
+        <tls.join value="true"/>
+        <tls.guess-signals value="true"/>
+        <tls.default-type value="actuated"/>
+    </tls_building>
+
+    <ramp_guessing>
+        <ramps.guess value="true"/>
+    </ramp_guessing>
+
+    <junctions>
+        <junctions.join value="true"/>
+    </junctions>
+
+    <railway>
+        <railway.topology.repair value="true"/>
+    </railway>
+
+</netconvertConfiguration>
+-->
+
+<additional xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/additional_file.xsd">
+    <trainStop id="1070314237" name="Banashankari" lane="549256475#1_0" startPos="993.40" endPos="1193.40" friendlyPos="true">
+        <access lane="-1102819790#2_0" pos="0.00" length="20.62" friendlyPos="1"/>
+        <access lane="-309584107#4_0" pos="0.00" length="81.18" friendlyPos="1"/>
+        <access lane="-772157517_0" pos="57.16" length="109.33" friendlyPos="1"/>
+        <access lane="1102819790#2_0" pos="64.54" length="16.64" friendlyPos="1"/>
+        <access lane="309584107#4_0" pos="100.26" length="85.93" friendlyPos="1"/>
+    </trainStop>
+    <trainStop id="12040966324" name="Central Silk Board" lane="1299917515_0" startPos="71.96" endPos="271.96" friendlyPos="true"/>
+    <trainStop id="13046007574" name="Central Silk Board" lane="1299917516_0" startPos="4678.14" endPos="4878.14" friendlyPos="true"/>
+    <trainStop id="13046007575" name="BTM Layout" lane="1299917516_0" startPos="3354.78" endPos="3554.78" friendlyPos="true"/>
+    <trainStop id="13046007576" name="BTM Layout" lane="1299917515_0" startPos="1432.47" endPos="1632.47" friendlyPos="true"/>
+    <trainStop id="13046007577" name="Jayadeva Hospital" lane="1299917515_0" startPos="2290.75" endPos="2490.75" friendlyPos="true"/>
+    <trainStop id="13046007578" name="Jayadeva Hospital" lane="1299917516_0" startPos="2466.38" endPos="2666.38" friendlyPos="true"/>
+    <trainStop id="13046011005" name="Ragigudda" lane="1299917515_0" startPos="3589.40" endPos="3789.40" friendlyPos="true"/>
+    <trainStop id="13046011006" name="Ragigudda" lane="1299917516_0" startPos="1189.68" endPos="1389.68" friendlyPos="true"/>
+    <trainStop id="13046011007" name="Rashtreeya Vidyalaya Road" lane="1299917516_0" startPos="0.00" endPos="200.00" friendlyPos="true">
+        <access lane="-1044521116_0" pos="104.48" length="49.02" friendlyPos="1"/>
+        <access lane="1044521116_0" pos="272.51" length="53.82" friendlyPos="1"/>
+        <access lane="1219906187#1_0" pos="69.14" length="52.11" friendlyPos="1"/>
+        <access lane="1219906189#1_0" pos="0.20" length="157.07" friendlyPos="1"/>
+        <access lane="1422515616#1_0" pos="103.20" length="48.08" friendlyPos="1"/>
+    </trainStop>
+    <trainStop id="13046011008" name="Rashtreeya Vidyalaya Road" lane="1299917515_0" startPos="4786.42" endPos="4986.42" friendlyPos="true">
+        <access lane="-1044521116_0" pos="204.14" length="42.06" friendlyPos="1"/>
+        <access lane="-1350390280#4_0" pos="0.00" length="185.05" friendlyPos="1"/>
+        <access lane="1044521116_0" pos="172.86" length="46.86" friendlyPos="1"/>
+        <access lane="1350390280#4_0" pos="192.56" length="189.83" friendlyPos="1"/>
+        <access lane="1422515616#1_0" pos="188.15" length="58.09" friendlyPos="1"/>
+    </trainStop>
+    <trainStop id="1565099104" name="Rashtreeya Vidyalaya Road" lane="549256475#0_0" startPos="0.00" endPos="112.37" friendlyPos="true">
+        <access lane="-1044521116_0" pos="145.68" length="80.94" friendlyPos="1"/>
+        <access lane="-1350390280#4_0" pos="47.35" length="146.10" friendlyPos="1"/>
+        <access lane="1044521116_0" pos="231.31" length="85.74" friendlyPos="1"/>
+        <access lane="1219906187#1_0" pos="69.14" length="115.68" friendlyPos="1"/>
+        <access lane="1422515616#1_0" pos="144.17" length="15.57" friendlyPos="1"/>
+    </trainStop>
+    <busStop id="2396394290" name="Jayanagara 40th Cross" lane="1350390280#1_0" startPos="117.85" endPos="132.85" friendlyPos="true"/>
+    <trainStop id="5760198466" name="Banashankari" lane="607901283#1_0" startPos="1001.90" endPos="1201.90" friendlyPos="true">
+        <access lane="-1102819790#2_0" pos="0.00" length="24.94" friendlyPos="1"/>
+        <access lane="-309584107#4_0" pos="0.00" length="82.56" friendlyPos="1"/>
+        <access lane="-772157517_0" pos="57.16" length="115.35" friendlyPos="1"/>
+        <access lane="1102819790#2_0" pos="64.54" length="21.71" friendlyPos="1"/>
+        <access lane="309584107#4_0" pos="100.26" length="87.23" friendlyPos="1"/>
+    </trainStop>
+    <trainStop id="5760198467" name="Rashtreeya Vidyalaya Road" lane="607901283#0_0" startPos="0.00" endPos="104.56" friendlyPos="true">
+        <access lane="-1044521116_0" pos="145.62" length="74.22" friendlyPos="1"/>
+        <access lane="-1350390280#4_0" pos="47.37" length="152.82" friendlyPos="1"/>
+        <access lane="1044521116_0" pos="231.38" length="79.02" friendlyPos="1"/>
+        <access lane="1219906187#1_0" pos="69.14" length="114.40" friendlyPos="1"/>
+        <access lane="1422515616#1_0" pos="144.15" length="22.30" friendlyPos="1"/>
+    </trainStop>
+</additional>

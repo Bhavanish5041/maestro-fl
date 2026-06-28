@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-06-27T15:01:58.447349+05:30 by Eclipse SUMO netconvert 1.27.1
+<netconvertConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/netconvertConfiguration.xsd">
+
+    <input>
+        <type-files value="${SUMO_HOME}/data/typemap/osmNetconvert.typ.xml,${SUMO_HOME}/data/typemap/osmNetconvertShips.typ.xml,${SUMO_HOME}/data/typemap/osmNetconvertAerialway.typ.xml"/>
+        <osm-files value="osm_bbox.osm.xml.gz"/>
+    </input>
+
+    <output>
+        <output-file value="osm.net.xml.gz"/>
+        <output.street-names value="true"/>
+        <output.original-names value="true"/>
+        <ptstop-output value="osm_stops.add.xml"/>
+        <ptline-output value="osm_ptlines.xml"/>
+        <ptline-clean-up value="true"/>
+    </output>
+
+    <projection>
+        <proj.utm value="true"/>
+    </projection>
+
+    <processing>
+        <geometry.remove value="true"/>
+    </processing>
+
+    <tls_building>
+        <tls.discard-simple value="true"/>
+        <tls.join value="true"/>
+        <tls.guess-signals value="true"/>
+        <tls.default-type value="actuated"/>
+    </tls_building>
+
+    <ramp_guessing>
+        <ramps.guess value="true"/>
+    </ramp_guessing>
+
+    <junctions>
+        <junctions.join value="true"/>
+    </junctions>
+
+    <railway>
+        <railway.topology.repair value="true"/>
+    </railway>
+
+</netconvertConfiguration>
+-->
+
+<ptLines xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/ptlines_file.xsd">
+    <ptLine id="16176489" name="Green Line (Silk Institute -&gt; Peenya Industry)" line="Green" type="subway" vClass="subway" period="300" color="0,153,51" completeness="0.08" missingBefore="7" missingAfter="17">
+        <busStop id="5760198466" name="Banashankari"/>
+        <busStop id="5760198467" name="Rashtreeya Vidyalaya Road"/>
+    </ptLine>
+    <ptLine id="16176490" name="Green Line (Peenya Industry -&gt; Silk Institute)" line="Green" type="subway" vClass="subway" period="300" color="0,153,51" completeness="0.08" missingBefore="17" missingAfter="7">
+        <busStop id="1565099104" name="Rashtreeya Vidyalaya Road"/>
+        <busStop id="1070314237" name="Banashankari"/>
+    </ptLine>
+    <ptLine id="1798772" name="Green Line (Silk Institute -&gt; Madavara)" line="Green" type="subway" vClass="subway" period="600" color="0,153,51" completeness="0.06" missingBefore="7" missingAfter="23">
+        <busStop id="5760198466" name="Banashankari"/>
+        <busStop id="5760198467" name="Rashtreeya Vidyalaya Road"/>
+    </ptLine>
+    <ptLine id="19421927" name="Yellow Line (Delta Electronics Bommasandra → Rashtreeya Vidyalaya Road)" line="Yellow" type="subway" vClass="subway" color="yellow" completeness="0.31" missingBefore="11">
+        <busStop id="12040966324" name="Central Silk Board"/>
+        <busStop id="13046007576" name="BTM Layout"/>
+        <busStop id="13046007577" name="Jayadeva Hospital"/>
+        <busStop id="13046011005" name="Ragigudda"/>
+        <busStop id="13046011008" name="Rashtreeya Vidyalaya Road"/>
+    </ptLine>
+    <ptLine id="19421944" name="Yellow Line (Rashtreeya Vidyalaya Road → Delta Electronics Bommasandra)" line="Yellow" type="subway" vClass="subway" color="yellow" completeness="0.31" missingAfter="11">
+        <busStop id="13046011007" name="Rashtreeya Vidyalaya Road"/>
+        <busStop id="13046011006" name="Ragigudda"/>
+        <busStop id="13046007578" name="Jayadeva Hospital"/>
+        <busStop id="13046007575" name="BTM Layout"/>
+        <busStop id="13046007574" name="Central Silk Board"/>
+    </ptLine>
+    <ptLine id="6781293" name="AS1" line="AS1" type="bus" vClass="bus" completeness="0.00" missingBefore="11">
+        <route edges="462900086#0 462900086#1 462900086#2 462900086#3"/>
+    </ptLine>
+    <ptLine id="7842287" name="Green Line (Madavara -&gt; Silk Institute)" line="Green" type="subway" vClass="subway" period="600" color="0,153,51" completeness="0.06" missingBefore="23" missingAfter="7">
+        <busStop id="1565099104" name="Rashtreeya Vidyalaya Road"/>
+        <busStop id="1070314237" name="Banashankari"/>
+    </ptLine>
+    <ptLine id="9383245" name="375: Byrasandra =&gt; Shirke KHB Quarters" line="375" type="bus" vClass="bus" completeness="0.03" missingBefore="2" missingAfter="31">
+        <busStop id="2396394290" name="Jayanagara 40th Cross"/>
+    </ptLine>
+</ptLines>
