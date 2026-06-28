@@ -115,24 +115,24 @@ This happens **outside** the normal FL round schedule — no waiting for the nex
 
 ### Week 1
 - [x] Lock `shared/schema.py`
-- [ ] SUMO network + ambulance injection working standalone
-- [ ] PPO trains on dummy/random traffic
-- [ ] FedProx client/server running with dummy clients
-- [ ] LSTM tested on synthetic data
-- [ ] **Spike priority trigger in isolation** (`python -m federated.priority_trigger`)
+- [x] SUMO network + ambulance injection working standalone
+- [x] PPO trains on dummy/random traffic
+- [x] FedProx client/server running with dummy clients
+- [x] LSTM tested on synthetic data
+- [x] **Spike priority trigger in isolation** (`python -m federated.priority_trigger`)
 
 ### Week 2
-- [ ] Real traffic logs from SUMO
-- [ ] PPO training on real network
-- [ ] LSTM training on real logs
-- [ ] Wire real models into FedProx
-- [ ] **Full integration**: ambulance → priority → action mask → model push
+- [x] Real traffic logs from SUMO
+- [x] PPO training on real network
+- [x] LSTM training on real logs
+- [x] Wire real models into FedProx
+- [x] **Full integration**: ambulance → priority → action mask → model push
 
 ### Week 3
-- [ ] Run all 4 conditions
-- [ ] Collect metrics, generate plots
-- [ ] Build report with privacy comparison figure
-- [ ] Buffer days (protected from scope creep)
+- [x] Run all 4 conditions
+- [x] Collect metrics, generate plots
+- [x] Build report with privacy comparison figure
+- [x] Buffer days (protected from scope creep)
 
 ## Key Metrics
 
