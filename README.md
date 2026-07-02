@@ -100,7 +100,7 @@ Standard Flower FL operates in synchronous rounds. MAESTRO-FL adds an **out-of-c
 4. Each junction's `TrafficEnv` activates its priority action mask
 5. The PPO agent is overridden to give green to the ambulance's approach lane
 
-This happens **outside** the normal FL round schedule — no waiting for the next aggregation round.
+This happens **outside** the normal FL round schedule - no waiting for the next aggregation round.
 
 ## Experimental Conditions
 
@@ -126,7 +126,7 @@ This happens **outside** the normal FL round schedule — no waiting for the nex
 - [x] PPO training on real network
 - [x] LSTM training on real logs
 - [x] Wire real models into FedProx
-- [x] **Full integration**: ambulance → priority → action mask → model push
+- [x] **Full integration**: ambulance -> priority -> action mask -> model push
 
 ### Week 3
 - [x] Run all 4 conditions
@@ -142,3 +142,13 @@ This happens **outside** the normal FL round schedule — no waiting for the nex
 - **Communication cost** (centralized GPS vs. our compact messages)
 - **FedProx convergence** with/without priority trigger
 - **Throughput** (vehicles completing trips)
+
+## Pending Work
+
+- Multi-agent PPO: Partial
+- Traffic forecasting: Stub not wired
+- EV detection + ETA: Detection yes, ETA no
+- Reproducible benchmarks: Partial
+- Web dashboard: Not built
+- V2I communication: Not built
+- Weather-aware timing: Not built
