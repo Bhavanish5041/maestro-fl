@@ -96,6 +96,45 @@ def get_upcoming_tls(veh_id: str, n_ahead: int = 4) -> List[Tuple[str, str]]:
         return []
 
 
+def check_emergency_events(junction_radius: float = 100.0) -> List[Tuple[str, str, str]]:
+    """
+    Detect emergency vehicles near traffic-light junctions.
+
+    Returns:
+        List of (event_type, junction_id, vehicle_id) tuples.
+    """
+    events = []
+    if traci is None:
+        return events
+
+    try:
+        emergency_vehicles = [
+            veh_id
+            for veh_id in traci.vehicle.getIDList()
+            if traci.vehicle.getVehicleClass(veh_id) == "emergency"
+        ]
+    except traci.TraCIException:
+        return events
+
+    for veh_id in emergency_vehicles:
+        try:
+            veh_x, veh_y = traci.vehicle.getPosition(veh_id)
+        except traci.TraCIException:
+            continue
+
+        for tls_id in traci.trafficlight.getIDList():
+            try:
+                tls_x, tls_y = traci.junction.getPosition(tls_id)
+            except traci.TraCIException:
+                continue
+
+            distance = math.hypot(veh_x - tls_x, veh_y - tls_y)
+            if distance <= junction_radius:
+                events.append(("emergency_near_junction", tls_id, veh_id))
+
+    return events
+
+
 def estimate_tls_eta(veh_id: str, tls_targets: List[Tuple[str, str]]) -> dict:
     """
     Estimate ETA in seconds from an emergency vehicle to each upcoming TLS.

@@ -19,10 +19,23 @@ sys.path.insert(0, os.path.dirname(__file__))
 import traci
 from sumo_env.logger import TrafficLogger
 from sumo_env.ambulance import inject_ambulance, check_emergency_events, build_priority_broadcast
+from sumo_env.traci_utils import start_traci
 
 SUMO_CFG = "sumo_env/network/osm.sumocfg"
-JUNCTION_ID = "GS_cluster_11197334454_11197334455_11197334456_11197334457_#9more"
+JUNCTION_ID = "auto"
 LOG_PATH = "sumo_env/logs/traffic_log.csv"
+
+
+def resolve_junction_id(junction_id: str) -> str:
+    """Return a valid traffic-light ID for the loaded SUMO network."""
+    tls_ids = list(traci.trafficlight.getIDList())
+    if not tls_ids:
+        raise RuntimeError("No traffic lights found in the SUMO network")
+    if junction_id and junction_id != "auto" and junction_id in tls_ids:
+        return junction_id
+    selected = tls_ids[0]
+    print(f"[SIM] Using traffic light: {selected}")
+    return selected
 
 
 def run(use_gui=False, inject_ambulance_at=100.0):
@@ -35,13 +48,14 @@ def run(use_gui=False, inject_ambulance_at=100.0):
         "--seed", "42",
     ]
 
-    traci.start(sumo_cmd)
+    start_traci(sumo_cmd)
     print(f"[SIM] SUMO started — logging to {LOG_PATH}")
     if use_gui:
         print(f"[SIM] ⏳ Set Delay slider to ~50ms, then press Play in the GUI")
         print(f"[SIM] 🚑 Ambulance will appear at t={inject_ambulance_at:.0f}s — watch for bright RED vehicle!")
 
-    logger = TrafficLogger(LOG_PATH, junction_ids=[JUNCTION_ID])
+    junction_id = resolve_junction_id(JUNCTION_ID)
+    logger = TrafficLogger(LOG_PATH, junction_ids=[junction_id])
 
     ambulance_injected = False
     ambulance_done = False
@@ -139,4 +153,3 @@ if __name__ == "__main__":
                         help="Inject ambulance at this simulation time (seconds)")
     args = parser.parse_args()
     run(use_gui=args.gui, inject_ambulance_at=args.ambulance_at)
-

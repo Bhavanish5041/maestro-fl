@@ -30,6 +30,8 @@ except ImportError:
     print("WARNING: traci/sumolib not found. Install SUMO and set SUMO_HOME.")
     traci = None
 
+from sumo_env.traci_utils import start_traci
+
 
 class TrafficEnv(gym.Env):
     """
@@ -121,7 +123,7 @@ class TrafficEnv(gym.Env):
         ]
         if self.sumo_seed is not None:
             sumo_cmd += ["--seed", str(self.sumo_seed)]
-        traci.start(sumo_cmd)
+        start_traci(sumo_cmd)
 
         self.step_count = 0
         self.priority_active = False

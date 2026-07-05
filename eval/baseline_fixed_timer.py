@@ -20,6 +20,7 @@ except ImportError:
     traci = None
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from sumo_env.traci_utils import start_traci
 
 
 def run_fixed_timer_baseline(
@@ -58,7 +59,7 @@ def run_fixed_timer_baseline(
         "--seed", str(seed),
         "--no-step-log", "true",
     ]
-    traci.start(sumo_cmd)
+    start_traci(sumo_cmd)
 
     metrics = {
         "waiting_time": [],
@@ -140,7 +141,7 @@ def run_emergency_baseline(
         "--seed", str(seed),
         "--no-step-log", "true",
     ]
-    traci.start(sumo_cmd)
+    start_traci(sumo_cmd)
 
     metrics = {
         "waiting_time": [],
