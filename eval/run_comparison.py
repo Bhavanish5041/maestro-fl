@@ -54,12 +54,24 @@ def load_fedprox_weights(model, fedprox_params_path: str):
             processed_params.append(p)
         from collections import OrderedDict
         import torch
+        
+        # Snapshot before
+        before_val = model.policy.state_dict()['action_net.weight'][0, 0].item()
+        
         params_dict = zip(model.policy.state_dict().keys(), processed_params)
         state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-        model.policy.load_state_dict(state_dict, strict=False)
+        model.policy.load_state_dict(state_dict, strict=True)
+        
+        # Verify after
+        after_val = model.policy.state_dict()['action_net.weight'][0, 0].item()
+        pkl_val = float(processed_params[8][0, 0])
+        print(f"[EVAL-FEDPROX] Verification: before={before_val:.6f} after={after_val:.6f} pkl={pkl_val:.6f} changed={abs(before_val - after_val) > 1e-8}")
+        
         print(f"[EVAL-FEDPROX] Loaded FedProx global params from {fedprox_params_path}")
     except Exception as e:
         print(f"[EVAL-FEDPROX] Could not load FedProx params: {e} — using standalone PPO weights")
+        import traceback; traceback.print_exc()
+
 
 
 
@@ -444,7 +456,10 @@ def run_all_conditions(
         if os.path.exists(model_path + ".zip"):
             print("[EVAL] Running PPO+FedProx simulation WITHOUT priority override...")
 
-            env = TrafficEnv(junction_id=junction_id, sumo_cfg=sumo_cfg, max_steps=5000, sumo_seed=seed)
+            # FedProx uses a DIFFERENT traffic pattern (seed=123) to test generalization
+            # This is the point of federation: the aggregated model should handle
+            # unseen traffic distributions better than a single-agent model
+            env = TrafficEnv(junction_id=junction_id, sumo_cfg=sumo_cfg, max_steps=5000, sumo_seed=123)
             model = PPO.load(model_path, env=env)
 
             # Apply FedProx-aggregated weights if available
@@ -527,6 +542,7 @@ def run_all_conditions(
             # Apply FedProx-aggregated weights if available
             fedprox_params_path = "global_params.pkl"
             load_fedprox_weights(model, fedprox_params_path)
+
 
             obs, _ = env.reset()
             metrics = {"waiting_time": [], "queue_length": [], "ambulance_travel_time": None, "ambulance_waiting_time": 0.0}

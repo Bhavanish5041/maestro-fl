@@ -167,10 +167,10 @@ step,condition,waiting_time,queue_length
 165,maestro_fl,0.0,0
 166,maestro_fl,3.0,2
 167,maestro_fl,6.0,1
-168,maestro_fl,11.0,1
-169,maestro_fl,16.0,1
-170,maestro_fl,25.0,2
-171,maestro_fl,35.0,2
+168,maestro_fl,0.0,0
+169,maestro_fl,0.0,0
+170,maestro_fl,5.0,1
+171,maestro_fl,10.0,1
 172,maestro_fl,0.0,0
 173,maestro_fl,0.0,0
 174,maestro_fl,0.0,0
@@ -193,7 +193,7 @@ step,condition,waiting_time,queue_length
 191,maestro_fl,37.0,1
 192,maestro_fl,42.0,1
 193,maestro_fl,47.0,1
-194,maestro_fl,52.0,1
+194,maestro_fl,54.0,2
 195,maestro_fl,57.0,1
 196,maestro_fl,62.0,1
 197,maestro_fl,67.0,1
@@ -211,7 +211,7 @@ step,condition,waiting_time,queue_length
 209,maestro_fl,127.0,1
 210,maestro_fl,132.0,1
 211,maestro_fl,137.0,1
-212,maestro_fl,148.0,3
+212,maestro_fl,144.0,2
 213,maestro_fl,147.0,1
 214,maestro_fl,152.0,1
 215,maestro_fl,157.0,1
