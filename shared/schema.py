@@ -38,18 +38,25 @@ def make_priority_message(
     urgency: float,
     timestamp: float,
     ttl_seconds: float = 30.0,
+    eta_seconds: dict = None,
 ) -> dict:
     """Create a validated priority broadcast message."""
     if not junction_ids:
         raise ValueError("junction_ids must be a non-empty list")
     if urgency < 0:
         raise ValueError("urgency must be non-negative")
-    return {
+    msg = {
         "junction_ids": list(junction_ids),
         "urgency": float(urgency),
         "timestamp": float(timestamp),
         "ttl_seconds": float(ttl_seconds),
     }
+    if eta_seconds is not None:
+        msg["eta_seconds"] = {
+            str(junction_id): float(eta)
+            for junction_id, eta in eta_seconds.items()
+        }
+    return msg
 
 
 def validate_priority_message(msg: dict) -> bool:

@@ -145,10 +145,10 @@ This happens **outside** the normal FL round schedule - no waiting for the next 
 
 ## Pending Work
 
-- Multi-agent PPO: Partial
-- Traffic forecasting: Stub not wired
-- EV detection + ETA: Detection yes, ETA no
-- Reproducible benchmarks: Partial
-- Web dashboard: Not built
-- V2I communication: Not built
-- Weather-aware timing: Not built
+- Multi-agent PPO: Shared-policy multi-junction training path added via `python -m rl_agent.train_ppo --junctions J1,J2,...`
+- Traffic forecasting: LSTM checkpoint loading wired into `TrafficEnv` with trend fallback when no model is available
+- EV detection + ETA: Priority broadcasts now include per-junction `eta_seconds` and ETA-based urgency
+- Reproducible benchmarks: Repeat-run seed aggregation added via `python -m eval.run_comparison --seeds 41,42,43`
+- Web dashboard: Static dashboard generator added via `python live_dashboard.py --results results --output dashboard.html`
+- V2I communication: In-process V2I priority message bus added in `federated/v2i.py`
+- Weather-aware timing: Priority TTL timing factors added for `clear`, `rain`, `heavy_rain`, and `fog`

@@ -23,6 +23,7 @@ import os
 import sys
 import argparse
 import csv
+import json
 from typing import Dict, List
 
 import numpy as np
@@ -484,6 +485,52 @@ def run_all_conditions(
     return all_results
 
 
+def run_repeated_benchmarks(
+    sumo_cfg: str,
+    junction_id: str,
+    seeds: List[int],
+    output_dir: str = "results",
+) -> Dict[str, Dict[str, float]]:
+    """Run the same benchmark across several seeds and save aggregate stats."""
+    repeated = {}
+    for seed in seeds:
+        seed_output = os.path.join(output_dir, f"seed_{seed}")
+        repeated[str(seed)] = run_all_conditions(
+            sumo_cfg=sumo_cfg,
+            junction_id=junction_id,
+            seed=seed,
+            output_dir=seed_output,
+        )
+
+    aggregate = {}
+    conditions = sorted({
+        condition
+        for result in repeated.values()
+        for condition in result.keys()
+    })
+    for condition in conditions:
+        aggregate[condition] = {}
+        summaries = [
+            compute_summary_metrics(result[condition])
+            for result in repeated.values()
+            if condition in result
+        ]
+        metric_names = sorted({name for summary in summaries for name in summary})
+        for metric_name in metric_names:
+            values = [summary[metric_name] for summary in summaries if metric_name in summary]
+            if values:
+                arr = np.array(values, dtype=float)
+                aggregate[condition][f"{metric_name}_mean_across_seeds"] = float(np.mean(arr))
+                aggregate[condition][f"{metric_name}_std_across_seeds"] = float(np.std(arr))
+
+    os.makedirs(output_dir, exist_ok=True)
+    summary_path = os.path.join(output_dir, "reproducible_summary.json")
+    with open(summary_path, "w") as f:
+        json.dump(aggregate, f, indent=2)
+    print(f"[EVAL] Reproducible summary saved to {summary_path}")
+    return aggregate
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -498,13 +545,26 @@ if __name__ == "__main__":
     parser.add_argument("--junction", default="J1", help="Junction ID")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
+        "--seeds",
+        default=None,
+        help="Comma-separated seeds for repeatable aggregate benchmarks",
+    )
+    parser.add_argument(
         "--output", default="results", help="Output directory"
     )
     args = parser.parse_args()
 
-    run_all_conditions(
-        sumo_cfg=args.sumo_cfg,
-        junction_id=args.junction,
-        seed=args.seed,
-        output_dir=args.output,
-    )
+    if args.seeds:
+        run_repeated_benchmarks(
+            sumo_cfg=args.sumo_cfg,
+            junction_id=args.junction,
+            seeds=[int(seed.strip()) for seed in args.seeds.split(",") if seed.strip()],
+            output_dir=args.output,
+        )
+    else:
+        run_all_conditions(
+            sumo_cfg=args.sumo_cfg,
+            junction_id=args.junction,
+            seed=args.seed,
+            output_dir=args.output,
+        )

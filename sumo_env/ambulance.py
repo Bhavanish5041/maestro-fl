@@ -96,6 +96,52 @@ def get_upcoming_tls(veh_id: str, n_ahead: int = 4) -> List[Tuple[str, str]]:
         return []
 
 
+def estimate_tls_eta(veh_id: str, tls_targets: List[Tuple[str, str]]) -> dict:
+    """
+    Estimate ETA in seconds from an emergency vehicle to each upcoming TLS.
+
+    SUMO exposes route position and edge lengths, so this stays local and does
+    not require continuous GPS sharing. The estimate is intentionally simple:
+    remaining distance along the route divided by current speed.
+    """
+    if not tls_targets:
+        return {}
+
+    try:
+        route = list(traci.vehicle.getRoute(veh_id))
+        current_idx = traci.vehicle.getRouteIndex(veh_id)
+        lane_pos = traci.vehicle.getLanePosition(veh_id)
+        speed = max(traci.vehicle.getSpeed(veh_id), 0.1)
+    except traci.TraCIException:
+        return {}
+
+    eta_by_junction = {}
+    for tls_id, target_edge in tls_targets:
+        if target_edge not in route[current_idx:]:
+            continue
+
+        target_idx = route.index(target_edge, current_idx)
+        distance = 0.0
+        for edge_idx in range(current_idx, target_idx + 1):
+            edge_id = route[edge_idx]
+            try:
+                edge_length = traci.lane.getLength(f"{edge_id}_0")
+            except traci.TraCIException:
+                try:
+                    edge_length = traci.edge.getTraveltime(edge_id) * speed
+                except traci.TraCIException:
+                    edge_length = 0.0
+
+            if edge_idx == current_idx:
+                distance += max(0.0, edge_length - lane_pos)
+            else:
+                distance += edge_length
+
+        eta_by_junction[tls_id] = distance / speed
+
+    return eta_by_junction
+
+
 def build_priority_broadcast(
     veh_id: str,
     sim_time: float,
@@ -124,11 +170,14 @@ def build_priority_broadcast(
 
     # Urgency: inverse of speed (slower = more urgent, likely stuck in traffic)
     speed = traci.vehicle.getSpeed(veh_id)
-    urgency = 1.0 / max(speed, 0.1)
+    eta_seconds = estimate_tls_eta(veh_id, tls_targets)
+    nearest_eta = min(eta_seconds.values()) if eta_seconds else ttl_seconds
+    urgency = 1.0 / max(nearest_eta, 1.0)
 
     return make_priority_message(
         junction_ids=junctions,
         urgency=urgency,
         timestamp=sim_time,
         ttl_seconds=ttl_seconds,
+        eta_seconds=eta_seconds,
     )

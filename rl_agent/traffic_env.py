@@ -16,7 +16,6 @@ Reward:
     + emergency bonus/penalty when priority is active.
 """
 
-import sys
 import os
 import numpy as np
 from collections import deque
@@ -51,6 +50,8 @@ class TrafficEnv(gym.Env):
         use_gui: bool = False,
         delta_time: int = 5,
         sumo_seed: int = None,
+        lstm_model_path: str = None,
+        weather: str = "clear",
     ):
         """
         Args:
@@ -60,6 +61,8 @@ class TrafficEnv(gym.Env):
             n_phases: Number of signal phases at this junction.
             use_gui: If True, launch sumo-gui instead of sumo.
             delta_time: Number of simulation seconds per RL step.
+            lstm_model_path: Optional path to a trained CongestionLSTM checkpoint.
+            weather: Weather condition used to scale emergency green holds.
         """
         super().__init__()
         self.junction_id = junction_id
@@ -69,14 +72,22 @@ class TrafficEnv(gym.Env):
         self.use_gui = use_gui
         self.delta_time = delta_time
         self.sumo_seed = sumo_seed
+        self.lstm_model_path = lstm_model_path
+        self.weather = weather
 
         self.step_count = 0
         self.priority_active = False
         self.priority_urgency = 0.0
         self._priority_expiry = 0.0
 
-        # LSTM History buffer
-        self.queue_history = deque(maxlen=15)
+        self.lstm_model = None
+        self.lstm_min_val = 0.0
+        self.lstm_max_val = 1.0
+        self.lstm_window = 15
+        self._load_lstm_model(lstm_model_path)
+
+        # LSTM history buffer.
+        self.queue_history = deque(maxlen=self.lstm_window)
 
         # --- Spaces ---
         self.action_space = spaces.Discrete(n_phases)
@@ -134,12 +145,15 @@ class TrafficEnv(gym.Env):
         3. Advance simulation by delta_time seconds.
         4. Compute observation and reward.
         """
-        # --- Apply action and simulate ---
-        # Skip overriding if the external priority mask has locked the traffic light
-        # Check duration alone — the mask holds independently of the env's priority_active flag
+        if self.priority_active:
+            priority_action = self._priority_override_action()
+            if priority_action is not None:
+                action = priority_action
+
+        # Skip overriding if the external priority mask has locked the traffic light.
         phase_duration = traci.trafficlight.getPhaseDuration(self.junction_id)
         if phase_duration < 50:
-            traci.trafficlight.setPhase(self.junction_id, action)
+            traci.trafficlight.setPhase(self.junction_id, int(action))
             
         for _ in range(self.delta_time):
             traci.simulationStep()
@@ -238,19 +252,57 @@ class TrafficEnv(gym.Env):
 
     def lstm_predict(self) -> float:
         """
-        Predict congestion 10 minutes out using the trained LSTM.
-        (Stub logic wired up for the PyTorch model injection later).
+        Predict congestion using the trained LSTM when available.
+        Falls back to a simple trend estimate so training/evaluation still runs
+        without PyTorch or a checkpoint.
         """
         recent_queues = list(self.queue_history)
-        if len(recent_queues) < 15:
+        if len(recent_queues) < self.lstm_window:
             return 0.0  # not enough history yet, neutral prediction
-            
-        # STUB: Replace with actual `torch.no_grad(): pred = self.lstm_model(x)`
-        # For the stub, we just simulate a rising trend if recent queues are increasing
+
+        if self.lstm_model is not None:
+            try:
+                import torch
+
+                range_val = self.lstm_max_val - self.lstm_min_val
+                if range_val == 0:
+                    range_val = 1.0
+                x = (np.array(recent_queues, dtype=np.float32) - self.lstm_min_val) / range_val
+                pred_norm = self.lstm_model.predict(torch.tensor(x, dtype=torch.float32))
+                return max(0.0, float(pred_norm) * range_val + self.lstm_min_val)
+            except Exception as exc:
+                print(f"[ENV {self.junction_id}] LSTM prediction failed, using trend fallback: {exc}")
+                self.lstm_model = None
+
         trend = recent_queues[-1] - recent_queues[0]
         if trend > 0:
             return recent_queues[-1] + trend * 1.5
         return recent_queues[-1]
+
+    def _load_lstm_model(self, model_path: str = None) -> None:
+        """Load an optional trained congestion forecaster checkpoint."""
+        if model_path is None:
+            default_path = os.path.join(os.getcwd(), "lstm_congestion.pt")
+            model_path = default_path if os.path.exists(default_path) else None
+        if not model_path or not os.path.exists(model_path):
+            return
+
+        try:
+            import torch
+            from prediction.lstm_model import CongestionLSTM
+
+            checkpoint = torch.load(model_path, map_location="cpu")
+            self.lstm_window = int(checkpoint.get("window", self.lstm_window))
+            self.lstm_min_val = float(checkpoint.get("min_val", 0.0))
+            self.lstm_max_val = float(checkpoint.get("max_val", 1.0))
+            model = CongestionLSTM(hidden_size=int(checkpoint.get("hidden_size", 32)))
+            model.load_state_dict(checkpoint["model_state_dict"])
+            model.eval()
+            self.lstm_model = model
+            print(f"[ENV {self.junction_id}] Loaded LSTM forecaster from {model_path}")
+        except Exception as exc:
+            print(f"[ENV {self.junction_id}] Could not load LSTM checkpoint {model_path}: {exc}")
+            self.lstm_model = None
 
     # ------------------------------------------------------------------
     # Priority interface (called by federated/priority_trigger.py)
@@ -266,18 +318,44 @@ class TrafficEnv(gym.Env):
         """
         self.priority_active = True
         self.priority_urgency = urgency
-        self._priority_expiry = traci.simulation.getTime() + ttl
+        from sumo_env.weather import adjusted_duration
+
+        effective_ttl = adjusted_duration(ttl, self.weather)
+        self._priority_expiry = traci.simulation.getTime() + effective_ttl
         print(
             f"[ENV {self.junction_id}] Priority ON — urgency={urgency:.2f}, "
-            f"ttl={ttl:.1f}s"
+            f"ttl={effective_ttl:.1f}s weather={self.weather}"
         )
 
     def clear_priority(self) -> None:
         """Manually clear emergency priority mode."""
         self.priority_active = False
         self.priority_urgency = 0.0
+        self._priority_expiry = 0.0
 
+    def _priority_override_action(self):
+        """Return the phase that gives the emergency vehicle a green path."""
+        try:
+            if "ambulance_1" not in traci.vehicle.getIDList():
+                return None
 
+            route = traci.vehicle.getRoute("ambulance_1")
+            route_idx = traci.vehicle.getRouteIndex("ambulance_1")
+            if route_idx < 0 or route_idx >= len(route):
+                return None
+
+            incoming_edge = route[route_idx]
+            outgoing_edge = route[route_idx + 1] if route_idx + 1 < len(route) else None
+
+            from rl_agent.priority_mask import get_green_phase_for_edge
+
+            return get_green_phase_for_edge(
+                self.junction_id,
+                incoming_edge,
+                outgoing_edge,
+            )
+        except Exception:
+            return None
 
     def _ambulance_cleared(self) -> bool:
         """Check if the ambulance has left the simulation."""
