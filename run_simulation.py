@@ -21,11 +21,12 @@ from sumo_env.logger import TrafficLogger
 from sumo_env.ambulance import inject_ambulance, check_emergency_events, build_priority_broadcast
 
 SUMO_CFG = "sumo_env/network/osm.sumocfg"
-JUNCTION_ID = "GS_cluster_11197334454_11197334455_11197334456_11197334457_#9more"
+JUNCTION_ID = None  # Auto-detected at runtime from the SUMO network
 LOG_PATH = "sumo_env/logs/traffic_log.csv"
 
 
 def run(use_gui=False, inject_ambulance_at=100.0):
+    global JUNCTION_ID
     sumo_binary = "sumo-gui" if use_gui else "sumo"
     sumo_cmd = [
         sumo_binary,
@@ -36,6 +37,16 @@ def run(use_gui=False, inject_ambulance_at=100.0):
     ]
 
     traci.start(sumo_cmd)
+
+    # Auto-detect junction ID from the running simulation
+    if JUNCTION_ID is None:
+        tls_list = traci.trafficlight.getIDList()
+        if not tls_list:
+            print("[SIM] ERROR: No traffic lights found in this network!")
+            traci.close()
+            return
+        JUNCTION_ID = tls_list[0]
+        print(f"[SIM] Auto-detected TLS ID: {JUNCTION_ID}")
     print(f"[SIM] SUMO started — logging to {LOG_PATH}")
     if use_gui:
         print(f"[SIM] ⏳ Set Delay slider to ~50ms, then press Play in the GUI")

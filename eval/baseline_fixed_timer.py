@@ -118,7 +118,7 @@ def run_fixed_timer_baseline(
 def run_emergency_baseline(
     sumo_cfg: str,
     junction_id: str,
-    ambulance_route_id: str,
+    ambulance_route_edges: list = None,
     ambulance_depart: float = 100.0,
     cycle_time: int = 30,
     seed: int = 42,
@@ -128,6 +128,15 @@ def run_emergency_baseline(
 
     The fixed timer does NOT give the ambulance any priority — this
     demonstrates the problem our system solves.
+
+    Args:
+        sumo_cfg: Path to SUMO configuration file.
+        junction_id: Junction to control with fixed timer.
+        ambulance_route_edges: List of edge IDs for the ambulance route.
+            If None, a route is found dynamically.
+        ambulance_depart: Simulation time to inject the ambulance.
+        cycle_time: Seconds per phase before switching.
+        seed: Random seed for reproducibility.
 
     Returns:
         Dict with per-step metrics PLUS ambulance-specific metrics:
@@ -160,28 +169,32 @@ def run_emergency_baseline(
             if not ambulance_injected and sim_time >= ambulance_depart:
                 try:
                     if "amb_route" not in traci.route.getIDList():
-                        import random
-                        edges = traci.edge.getIDList()
-                        route_edges = []
-                        controlled_lanes = traci.trafficlight.getControlledLanes(junction_id)
-                        tls_edges = list(set(l.rsplit('_', 1)[0] for l in controlled_lanes))
-                        
-                        if tls_edges:
-                            target = tls_edges[0]
-                            for _ in range(50):
-                                start = random.choice(edges)
-                                route = traci.simulation.findRoute(start, target)
-                                if route.edges and len(route.edges) > 3:
-                                    route_edges = list(route.edges)
-                                    break
-                        
-                        if not route_edges:
-                            entry_edge = "1259589338#3"
-                            exit_edge = "1222891448#0"
-                            route_edges = [entry_edge, exit_edge]
-                            
+                        if ambulance_route_edges:
+                            route_edges = ambulance_route_edges
+                        else:
+                            # Fallback: find a route dynamically
+                            import random
+                            edges = traci.edge.getIDList()
+                            route_edges = []
+                            controlled_lanes = traci.trafficlight.getControlledLanes(junction_id)
+                            tls_edges = list(set(l.rsplit('_', 1)[0] for l in controlled_lanes))
+
+                            if tls_edges:
+                                target = tls_edges[0]
+                                for _ in range(50):
+                                    start = random.choice(edges)
+                                    route = traci.simulation.findRoute(start, target)
+                                    if route.edges and len(route.edges) > 3:
+                                        route_edges = list(route.edges)
+                                        break
+
+                            if not route_edges:
+                                entry_edge = "1259589338#3"
+                                exit_edge = "1222891448#0"
+                                route_edges = [entry_edge, exit_edge]
+
                         traci.route.add("amb_route", route_edges)
-                        
+
                     traci.vehicle.add(
                         vehID="ambulance_1",
                         routeID="amb_route",

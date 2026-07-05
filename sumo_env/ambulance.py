@@ -132,3 +132,67 @@ def build_priority_broadcast(
         timestamp=sim_time,
         ttl_seconds=ttl_seconds,
     )
+
+
+# ---------------------------------------------------------------------------
+# Emergency event detection — proximity-based scanning
+# ---------------------------------------------------------------------------
+
+def check_emergency_events(
+    junction_radius: float = 100.0,
+) -> List[Tuple[str, str, str]]:
+    """
+    Scan all vehicles in the simulation for emergency-class vehicles
+    near any traffic light junction.
+
+    Args:
+        junction_radius: Distance threshold (meters) for detecting an
+            emergency vehicle near a junction.
+
+    Returns:
+        List of (event_type, junction_id, vehicle_id) tuples.
+        event_type is one of:
+            "APPROACHING" — vehicle is within radius of a TLS junction
+    """
+    events = []
+    try:
+        tls_ids = traci.trafficlight.getIDList()
+        if not tls_ids:
+            return events
+
+        # Build a map of junction_id → (x, y) for each TLS
+        tls_positions = {}
+        for tls_id in tls_ids:
+            controlled = traci.trafficlight.getControlledLanes(tls_id)
+            if controlled:
+                # Average position of all controlled lane endpoints
+                xs, ys = [], []
+                for lane in controlled:
+                    shape = traci.lane.getShape(lane)
+                    if shape:
+                        # Use the end point of the lane (closest to junction)
+                        xs.append(shape[-1][0])
+                        ys.append(shape[-1][1])
+                if xs:
+                    tls_positions[tls_id] = (sum(xs) / len(xs), sum(ys) / len(ys))
+
+        # Scan all vehicles for emergency class
+        for veh_id in traci.vehicle.getIDList():
+            try:
+                vclass = traci.vehicle.getVehicleClass(veh_id)
+                if vclass != "emergency":
+                    continue
+
+                vx, vy = traci.vehicle.getPosition(veh_id)
+
+                for tls_id, (jx, jy) in tls_positions.items():
+                    dist = math.sqrt((vx - jx) ** 2 + (vy - jy) ** 2)
+                    if dist <= junction_radius:
+                        events.append(("APPROACHING", tls_id, veh_id))
+            except traci.TraCIException:
+                continue
+
+    except traci.TraCIException:
+        pass
+
+    return events

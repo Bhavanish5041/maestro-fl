@@ -3,8 +3,8 @@ MAESTRO-FL Live Demo
 ---------------------
 Runs a watchable SUMO-GUI simulation:
   - Normal traffic runs first so the audience sees baseline congestion.
-  - An ambulance is injected on a confirmed route (crosses the fixed
-    roundabout junction) after a short delay.
+  - An ambulance is injected on a dynamically discovered route (crosses
+    the first traffic light junction) after a short delay.
   - The priority override forces green lights along its upcoming path
     and releases them once it has passed each junction.
 
@@ -23,27 +23,72 @@ sys.path.append(os.path.join(REPO_ROOT, "rl_agent"))
 from priority_mask import force_green_along_route, release_green_lock  # noqa: E402
 
 # --- Config ---
-SUMO_CFG = os.path.join(REPO_ROOT, "sumo_env", "network", "osm.sumocfg")  # must point at the FIXED network
-ROUTE_FROM_EDGE = "40633859#8"
-ROUTE_TO_EDGE = "799788864#5"
+SUMO_CFG = os.path.join(REPO_ROOT, "sumo_env", "network", "osm.sumocfg")
 AMBULANCE_DEPART_STEP = 50      # let normal traffic build up first
 STEP_DELAY_MS = 100             # GUI playback delay; raise for slower/more watchable
-ZOOM_LEVEL = 800
+ZOOM_LEVEL = 3000
 LOOKAHEAD_JUNCTIONS = 5
 MAX_STEPS = 1000                # safety cap so the demo can't run forever
 
 
+def discover_ambulance_route():
+    """
+    Dynamically find a valid ambulance route through the first TLS junction.
+    Uses existing vehicle routes or SUMO's findRoute to guarantee validity.
+    """
+    tls_list = traci.trafficlight.getIDList()
+    if not tls_list:
+        print("[DEMO] No traffic lights found!")
+        return None
+
+    tls_id = tls_list[0]
+    controlled_lanes = traci.trafficlight.getControlledLanes(tls_id)
+    tls_edges = list(set(lane.rsplit("_", 1)[0] for lane in controlled_lanes))
+
+    if not tls_edges:
+        print("[DEMO] No edges feed the traffic light!")
+        return None
+
+    # Strategy 1: Copy a route from an existing vehicle that passes through the TLS
+    for veh_id in traci.vehicle.getIDList():
+        try:
+            route = traci.vehicle.getRoute(veh_id)
+            for i, edge in enumerate(route):
+                if edge in tls_edges and i >= 2 and i + 3 < len(route):
+                    return route[max(0, i - 3): min(len(route), i + 4)]
+        except Exception:
+            continue
+
+    # Strategy 2: Use SUMO's built-in router
+    import random
+    all_edges = [e for e in traci.edge.getIDList() if not e.startswith(":")]
+    target_edge = tls_edges[0]
+    for _ in range(100):
+        start_edge = random.choice(all_edges)
+        route = traci.simulation.findRoute(start_edge, target_edge)
+        if route.edges and len(route.edges) > 3:
+            return list(route.edges)
+
+    print("[DEMO] Could not find a valid route through the junction!")
+    return None
+
+
 def inject_ambulance():
-    route = traci.simulation.findRoute(fromEdge=ROUTE_FROM_EDGE, toEdge=ROUTE_TO_EDGE)
-    traci.route.add("amb_demo_route", route.edges)
+    route_edges = discover_ambulance_route()
+    if not route_edges:
+        return False
+
+    traci.route.add("amb_demo_route", route_edges)
     traci.vehicle.add(
         vehID="ambulance_1",
         routeID="amb_demo_route",
         typeID="emergency",
         depart=traci.simulation.getTime(),
     )
-    print(f"[DEMO] Ambulance injected. Route: {len(route.edges)} edges, "
-          f"expected travel time ~{route.travelTime:.0f}s")
+    traci.vehicle.setColor("ambulance_1", (255, 0, 0, 255))
+    traci.vehicle.setVehicleClass("ambulance_1", "emergency")
+    print(f"[DEMO] Ambulance injected. Route: {len(route_edges)} edges")
+    return True
 
 
 def run_live_demo():
@@ -66,13 +111,16 @@ def run_live_demo():
                 break
 
             if not ambulance_injected and step >= AMBULANCE_DEPART_STEP:
-                inject_ambulance()
-                ambulance_injected = True
-                try:
-                    traci.gui.trackVehicle("View #0", "ambulance_1")
-                    traci.gui.setZoom("View #0", ZOOM_LEVEL)
-                except traci.exceptions.TraCIException:
-                    print("[DEMO] Warning: camera tracking failed (non-fatal)")
+                if inject_ambulance():
+                    ambulance_injected = True
+                    try:
+                        traci.gui.trackVehicle("View #0", "ambulance_1")
+                        traci.gui.setZoom("View #0", ZOOM_LEVEL)
+                    except traci.exceptions.TraCIException:
+                        print("[DEMO] Warning: camera tracking failed (non-fatal)")
+                else:
+                    print("[DEMO] Could not inject ambulance — continuing without it")
+                    ambulance_injected = True  # don't retry every step
 
             if ambulance_injected and "ambulance_1" in traci.vehicle.getIDList():
                 force_green_along_route("ambulance_1", lookahead=LOOKAHEAD_JUNCTIONS)

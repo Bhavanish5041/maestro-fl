@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAESTRO-FL: Federated RL Traffic Control & Priority Override</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- ChartJS -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Controls -->
+        <aside class="sidebar glass">
+            <div class="logo">
+                <h1>MAESTRO-FL</h1>
+                <span class="badge">V1.0.0</span>
+            </div>
+            
+            <p class="tagline">Federated RL Traffic Control & Out-of-Cycle Priority Trigger</p>
+            
+            <div class="divider"></div>
+            
+            <!-- Mode Cards -->
+            <div class="section-title">Select Condition</div>
+            <div class="mode-selector">
+                <button class="mode-card glass active" data-condition="1" onclick="selectCondition(1)">
+                    <div class="mode-num">01</div>
+                    <div class="mode-details">
+                        <h3>Fixed Timer</h3>
+                        <p>30s cycle rotation baseline</p>
+                    </div>
+                </button>
+                
+                <button class="mode-card glass" data-condition="2" onclick="selectCondition(2)">
+                    <div class="mode-num">02</div>
+                    <div class="mode-details">
+                        <h3>PPO Only</h3>
+                        <p>Isolated RL (No priority)</p>
+                    </div>
+                </button>
+                
+                <button class="mode-card glass" data-condition="3" onclick="selectCondition(3)">
+                    <div class="mode-num">03</div>
+                    <div class="mode-details">
+                        <h3>PPO + FedProx</h3>
+                        <p>Federated RL (No priority)</p>
+                    </div>
+                </button>
+                
+                <button class="mode-card glass highlight" data-condition="4" onclick="selectCondition(4)">
+                    <div class="mode-num">04</div>
+                    <div class="mode-details">
+                        <h3>MAESTRO-FL</h3>
+                        <p>Federated RL + Priority Trigger</p>
+                    </div>
+                </button>
+            </div>
+            
+            <div class="divider"></div>
+            
+            <!-- Controls -->
+            <div class="control-actions">
+                <button id="btn-start" class="btn primary" onclick="startSimulation()">
+                    <span class="icon">▶</span> Start Simulation
+                </button>
+                <button id="btn-stop" class="btn danger disabled" onclick="stopSimulation()" disabled>
+                    <span class="icon">■</span> Stop
+                </button>
+                <button id="btn-inject" class="btn warning disabled" onclick="injectAmbulance()" disabled>
+                    <span class="icon">🚑</span> Inject Ambulance
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Display Panel -->
+        <main class="main-content">
+            <!-- Top Stats Banner -->
+            <header class="stats-header">
+                <div class="kpi-card glass">
+                    <span class="kpi-label">Simulation Time</span>
+                    <span class="kpi-val" id="val-time">0.0s</span>
+                </div>
+                <div class="kpi-card glass">
+                    <span class="kpi-label">Avg waiting time</span>
+                    <span class="kpi-val" id="val-wait">0.0s</span>
+                </div>
+                <div class="kpi-card glass">
+                    <span class="kpi-label">Queue Length</span>
+                    <span class="kpi-val" id="val-queue">0</span>
+                </div>
+                <div class="kpi-card glass emergency" id="kpi-amb">
+                    <span class="kpi-label">Ambulance Status</span>
+                    <span class="kpi-val" id="val-amb-status">Inactive</span>
+                    <div class="amb-substats" id="amb-substats" style="display: none;">
+                        <span>Time: <strong id="val-amb-time">0.0s</strong></span>
+                        <span>Delay: <strong id="val-amb-wait">0.0s</strong></span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="visualizer-grid">
+                <!-- Visual Map Canvas -->
+                <div class="map-container glass">
+                    <div class="card-header">
+                        <h2>Intersection Live Feed</h2>
+                        <span class="live-indicator"><span class="pulse"></span> LIVE</span>
+                    </div>
+                    <div class="canvas-wrapper">
+                        <canvas id="map-canvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- Charts Side Panel -->
+                <div class="charts-container">
+                    <div class="chart-card glass">
+                        <div class="card-header">
+                            <h2>Waiting Time History</h2>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="waiting-chart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card glass">
+                        <div class="card-header">
+                            <h2>Queue Length History</h2>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="queue-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log Terminal Output -->
+            <footer class="log-footer glass">
+                <div class="card-header">
+                    <h2>Priority Coordinator Terminal</h2>
+                    <span class="term-status" id="term-status">Idle</span>
+                </div>
+                <div class="terminal-body" id="terminal-logs">
+                    <div class="log-line system">[SYSTEM] Ready. Select condition and start simulation.</div>
+                </div>
+            </footer>
+        </main>
+    </div>
+    
+    <!-- Application JS -->
+    <script src="app.js"></script>
+</body>
+</html>

@@ -4,9 +4,9 @@ rl_agent/traffic_env.py — Gymnasium Wrapper for SUMO Traffic Control
 Wraps a single SUMO junction's traffic light into a Gymnasium environment
 for PPO training. Includes the priority action mask for emergency vehicles.
 
-Observation space (7-dim):
+Observation space (8-dim):
     [queue_lane_0, queue_lane_1, queue_lane_2, queue_lane_3,
-     current_phase, time_in_phase, priority_flag]
+     current_phase, time_in_phase, priority_flag, predicted_congestion]
 
 Action space:
     Discrete(n_phases) — select which phase to activate.
@@ -24,12 +24,21 @@ from collections import deque
 import gymnasium as gym
 from gymnasium import spaces
 
+import torch
+
 try:
     import traci
     from sumolib import checkBinary
 except ImportError:
     print("WARNING: traci/sumolib not found. Install SUMO and set SUMO_HOME.")
     traci = None
+
+# Import LSTM model class for loading
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+try:
+    from prediction.lstm_model import CongestionLSTM
+except ImportError:
+    CongestionLSTM = None
 
 
 class TrafficEnv(gym.Env):
@@ -51,6 +60,7 @@ class TrafficEnv(gym.Env):
         use_gui: bool = False,
         delta_time: int = 5,
         sumo_seed: int = None,
+        lstm_model_path: str = None,
     ):
         """
         Args:
@@ -60,6 +70,8 @@ class TrafficEnv(gym.Env):
             n_phases: Number of signal phases at this junction.
             use_gui: If True, launch sumo-gui instead of sumo.
             delta_time: Number of simulation seconds per RL step.
+            lstm_model_path: Path to trained LSTM checkpoint. If None,
+                auto-searches for 'lstm_congestion.pt' in project root.
         """
         super().__init__()
         self.junction_id = junction_id
@@ -78,6 +90,13 @@ class TrafficEnv(gym.Env):
         # LSTM History buffer
         self.queue_history = deque(maxlen=15)
 
+        # --- Load trained LSTM model ---
+        self._lstm_model = None
+        self._lstm_min_val = 0.0
+        self._lstm_max_val = 1.0
+        self._lstm_window = 15
+        self._load_lstm(lstm_model_path)
+
         # --- Spaces ---
         self.action_space = spaces.Discrete(n_phases)
         # obs: 4 lane queues + current_phase + time_in_phase + priority_flag + predicted_congestion
@@ -88,6 +107,39 @@ class TrafficEnv(gym.Env):
         # Will be populated on reset
         self._sumo_binary = None
         self._controlled_lanes = None
+
+    def _load_lstm(self, model_path: str = None) -> None:
+        """Load the trained LSTM model from checkpoint."""
+        if CongestionLSTM is None:
+            return
+
+        # Auto-search for model file
+        if model_path is None:
+            candidates = [
+                os.path.join(os.path.dirname(__file__), "..", "lstm_congestion.pt"),
+                "lstm_congestion.pt",
+            ]
+            for c in candidates:
+                if os.path.exists(c):
+                    model_path = c
+                    break
+
+        if model_path is None or not os.path.exists(model_path):
+            return
+
+        try:
+            checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
+            model = CongestionLSTM(hidden_size=checkpoint.get("hidden_size", 32))
+            model.load_state_dict(checkpoint["model_state_dict"])
+            model.eval()
+            self._lstm_model = model
+            self._lstm_min_val = checkpoint.get("min_val", 0.0)
+            self._lstm_max_val = checkpoint.get("max_val", 1.0)
+            self._lstm_window = checkpoint.get("window", 15)
+            print(f"[ENV] Loaded LSTM model from {model_path}")
+        except Exception as e:
+            print(f"[ENV] Warning: could not load LSTM model: {e}")
+            self._lstm_model = None
 
     def reset(self, seed=None, options=None):
         """Reset the environment: restart SUMO and return initial observation."""
@@ -238,15 +290,40 @@ class TrafficEnv(gym.Env):
 
     def lstm_predict(self) -> float:
         """
-        Predict congestion 10 minutes out using the trained LSTM.
-        (Stub logic wired up for the PyTorch model injection later).
+        Predict congestion using the trained LSTM model.
+
+        Uses the queue_history deque as input, normalizes it using the
+        training data's min/max values, runs inference, and denormalizes
+        the output.
+
+        Returns:
+            Predicted queue length (denormalized). Returns 0.0 if the
+            model is not loaded or there isn't enough history yet.
         """
         recent_queues = list(self.queue_history)
-        if len(recent_queues) < 15:
-            return 0.0  # not enough history yet, neutral prediction
-            
-        # STUB: Replace with actual `torch.no_grad(): pred = self.lstm_model(x)`
-        # For the stub, we just simulate a rising trend if recent queues are increasing
+        if len(recent_queues) < self._lstm_window:
+            return 0.0  # not enough history yet
+
+        # Use the real LSTM model if available
+        if self._lstm_model is not None:
+            try:
+                window_data = np.array(recent_queues[-self._lstm_window:], dtype=np.float32)
+
+                # Normalize using training data's min/max
+                range_val = self._lstm_max_val - self._lstm_min_val
+                if range_val == 0:
+                    range_val = 1.0
+                window_norm = (window_data - self._lstm_min_val) / range_val
+
+                x = torch.tensor(window_norm, dtype=torch.float32)
+                pred_norm = self._lstm_model.predict(x)
+
+                # Denormalize
+                return pred_norm * range_val + self._lstm_min_val
+            except Exception:
+                pass
+
+        # Fallback: simple trend extrapolation
         trend = recent_queues[-1] - recent_queues[0]
         if trend > 0:
             return recent_queues[-1] + trend * 1.5

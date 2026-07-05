@@ -69,14 +69,20 @@ python -m federated.priority_trigger
 # 5. Train LSTM on synthetic data (no SUMO needed)
 python -m prediction.train_lstm --synthetic
 
-# 6. Train PPO (requires SUMO network)
-python -m rl_agent.train_ppo --junction J1 --sumo-cfg sumo_env/network/osm.sumocfg
+# 6. Train PPO (requires SUMO network -- junction auto-detected)
+python -m rl_agent.train_ppo --sumo-cfg sumo_env/network/osm.sumocfg
 
 # 7. Start FL server
 python -m federated.server --rounds 20 --mu 0.1
 
-# 8. Run comparison
-python -m eval.run_comparison --junction J1 --sumo-cfg sumo_env/network/osm.sumocfg
+# 8. Run the full simulation with ambulance + priority
+python run_simulation.py
+
+# 9. Run all 4 experimental conditions + generate plots
+python -m eval.run_comparison --sumo-cfg sumo_env/network/osm.sumocfg
+
+# 10. Live demo with SUMO GUI
+python live_demo.py
 ```
 
 ## Module Overview
@@ -111,29 +117,6 @@ This happens **outside** the normal FL round schedule - no waiting for the next 
 | 3 | PPO + FedProx | Federated RL, no emergency priority |
 | 4 | **MAESTRO-FL** | Full system with priority trigger |
 
-## Week-by-Week Plan
-
-### Week 1
-- [x] Lock `shared/schema.py`
-- [x] SUMO network + ambulance injection working standalone
-- [x] PPO trains on dummy/random traffic
-- [x] FedProx client/server running with dummy clients
-- [x] LSTM tested on synthetic data
-- [x] **Spike priority trigger in isolation** (`python -m federated.priority_trigger`)
-
-### Week 2
-- [x] Real traffic logs from SUMO
-- [x] PPO training on real network
-- [x] LSTM training on real logs
-- [x] Wire real models into FedProx
-- [x] **Full integration**: ambulance -> priority -> action mask -> model push
-
-### Week 3
-- [x] Run all 4 conditions
-- [x] Collect metrics, generate plots
-- [x] Build report with privacy comparison figure
-- [x] Buffer days (protected from scope creep)
-
 ## Key Metrics
 
 - **Emergency vehicle travel time** (biggest expected win)
@@ -143,12 +126,24 @@ This happens **outside** the normal FL round schedule - no waiting for the next 
 - **FedProx convergence** with/without priority trigger
 - **Throughput** (vehicles completing trips)
 
+## Integration Status
+
+| Component | Status |
+|-----------|--------|
+| Shared schema | Complete |
+| SUMO network + ambulance injection | Complete |
+| PPO training on real network | Complete (500k steps, 3 junctions) |
+| LSTM congestion prediction | Complete (wired into TrafficEnv) |
+| FedProx client/server | Complete (Flower-based) |
+| Priority trigger (out-of-cycle push) | Complete |
+| Priority action mask (force green) | Complete |
+| Emergency event detection | Complete |
+| 4-condition comparison runner | Complete |
+| Live demo (sumo-gui) | Complete |
+
 ## Pending Work
 
-- Multi-agent PPO: Partial
-- Traffic forecasting: Stub not wired
-- EV detection + ETA: Detection yes, ETA no
-- Reproducible benchmarks: Partial
-- Web dashboard: Not built
-- V2I communication: Not built
-- Weather-aware timing: Not built
+- Multi-junction concurrent PPO: not yet tested with multiple SUMO instances
+- Web dashboard: not built
+- V2I communication layer: not built
+- Weather-aware timing: not built

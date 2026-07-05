@@ -37,6 +37,31 @@ except ImportError:
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+def load_fedprox_weights(model, fedprox_params_path: str):
+    import os
+    import pickle
+    if not os.path.exists(fedprox_params_path):
+        print(f"[EVAL-FEDPROX] No FedProx params at {fedprox_params_path} — using standalone PPO weights")
+        return
+    try:
+        with open(fedprox_params_path, "rb") as f:
+            global_params = pickle.load(f)
+        processed_params = []
+        for i, p in enumerate(global_params):
+            if i in [0, 4] and p.shape == (64, 7):
+                p = np.hstack([p, np.zeros((64, 1), dtype=p.dtype)])
+                print(f"[EVAL-FEDPROX] Padded parameter {i} from (64, 7) to (64, 8) with zeros")
+            processed_params.append(p)
+        from collections import OrderedDict
+        import torch
+        params_dict = zip(model.policy.state_dict().keys(), processed_params)
+        state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+        model.policy.load_state_dict(state_dict, strict=False)
+        print(f"[EVAL-FEDPROX] Loaded FedProx global params from {fedprox_params_path}")
+    except Exception as e:
+        print(f"[EVAL-FEDPROX] Could not load FedProx params: {e} — using standalone PPO weights")
+
+
 
 # ---------------------------------------------------------------------------
 # Metric computation helpers
@@ -181,17 +206,18 @@ def plot_comparison(
     # --- Plot 3: Emergency Vehicle Travel Time (bar chart) ---
     fig, ax = plt.subplots(figsize=(8, 5))
     travel_times = {}
+    bar_colors = []
     for cond, metrics in all_results.items():
         if "ambulance_travel_time" in metrics:
             val = metrics["ambulance_travel_time"]
             if val is not None:
                 travel_times[labels.get(cond, cond)] = val
+                bar_colors.append(colors.get(cond, "#666"))
     if travel_times:
         bars = ax.bar(
             travel_times.keys(),
             travel_times.values(),
-            color=[colors.get(k, "#666") for k in all_results.keys()
-                   if "ambulance_travel_time" in all_results[k]],
+            color=bar_colors,
         )
         ax.set_ylabel("Travel Time (s)")
         ax.set_title("Emergency Vehicle Travel Time")
@@ -255,7 +281,21 @@ def run_all_conditions(
     seed: int = 42,
     output_dir: str = "results",
 ) -> Dict[str, Dict]:
-    
+    """
+    Run all 4 experimental conditions and collect results.
+
+    This is the main orchestrator. Each condition uses the same SUMO
+    seed and config for fair comparison.
+
+    Conditions:
+        1. Fixed Timer -- 30s cycle, ignores traffic state
+        2. PPO Only -- single-agent RL, no federation
+        3. PPO + FedProx -- federated RL weights, no emergency priority
+        4. MAESTRO-FL -- full system with priority trigger
+
+    NOTE: Conditions 2-4 require trained models. If models aren't
+    available, those conditions will be skipped with a warning.
+    """
     # Auto-detect junction if not explicitly provided
     if junction_id == "J1" or junction_id == "auto":
         import sumolib
@@ -267,31 +307,35 @@ def run_all_conditions(
         if tls_list:
             junction_id = tls_list[0].getID()
             print(f"[EVAL] Auto-detected TLS ID: {junction_id}")
-    """
-    Run all 4 experimental conditions and collect results.
 
-    This is the main orchestrator. Each condition uses the same SUMO
-    seed and config for fair comparison.
-
-    NOTE: Conditions 2-4 require trained models. If models aren't
-    available, those conditions will be skipped with a warning.
-    """
     os.makedirs(output_dir, exist_ok=True)
     all_results = {}
-    
+
     # Ensure Python's random module is seeded so dynamic routes are identical across conditions
     import random
     random.seed(seed)
 
-    # --- Condition 1: Fixed Timer ---
+    # Shared ambulance route (same across all conditions for fair comparison)
+    # 9-edge route (1164m) crossing the junction via 27673609#4 -> 1222891448#0
+    # which gets a protected green ('G') in Phase 4, avoiding yield deadlocks.
+    AMB_ROUTE_EDGES = ["40633855#3", "40633855#4", "27673609#1", "27673609#2",
+                       "27673609#3", "27673609#4", "1222891448#0",
+                       "1222891447#2", "1222891447#3"]
+    AMB_DEPART_TIME = 50.0
+
+    # =====================================================================
+    # CONDITION 1: Fixed Timer Baseline
+    # =====================================================================
     print("\n" + "=" * 60)
     print("CONDITION 1: Fixed Timer Baseline")
     print("=" * 60)
     try:
-        from eval.baseline_fixed_timer import run_fixed_timer_baseline
-        metrics = run_fixed_timer_baseline(
+        from eval.baseline_fixed_timer import run_emergency_baseline
+        metrics = run_emergency_baseline(
             sumo_cfg=sumo_cfg,
             junction_id=junction_id,
+            ambulance_route_edges=AMB_ROUTE_EDGES,
+            ambulance_depart=AMB_DEPART_TIME,
             seed=seed,
         )
         all_results["fixed_timer"] = metrics
@@ -302,62 +346,58 @@ def run_all_conditions(
         )
     except Exception as e:
         print(f"[EVAL] Fixed timer failed: {e}")
+        import traceback; traceback.print_exc()
 
-    # --- Condition 2: PPO Only ---
+    # =====================================================================
+    # CONDITION 2: PPO Only (no federation, no priority)
+    # =====================================================================
     print("\n" + "=" * 60)
     print("CONDITION 2: PPO Only (RL agent, no priority override)")
     print("=" * 60)
     try:
         from stable_baselines3 import PPO
         from rl_agent.traffic_env import TrafficEnv
-        from eval.run_priority_benchmark import run_priority_simulation
         import traci
 
         model_path = os.path.join("models", f"ppo_traffic_{junction_id}_final")
         if os.path.exists(model_path + ".zip"):
             print("[EVAL] Running PPO simulation WITHOUT priority override...")
-            
-            # We'll use the environment but NOT set the priority flag.
+
             env = TrafficEnv(junction_id=junction_id, sumo_cfg=sumo_cfg, max_steps=5000, sumo_seed=seed)
             model = PPO.load(model_path, env=env)
-            
+
             obs, _ = env.reset()
             metrics = {"waiting_time": [], "queue_length": [], "ambulance_travel_time": None, "ambulance_waiting_time": 0.0}
-            
+
             ambulance_injected = False
             ambulance_start_time = None
             step_count = 0
-            
+
             while True:
                 sim_time = traci.simulation.getTime()
-                
+
                 # Dynamic injection
-                if not ambulance_injected and sim_time >= 50.0:
+                if not ambulance_injected and sim_time >= AMB_DEPART_TIME:
                     try:
                         if "amb_route" not in traci.route.getIDList():
-                            # 9-edge route (1164m) crossing the junction via 27673609#4 -> 1222891448#0
-                            # which gets a protected green ('G') in Phase 4, avoiding yield deadlocks.
-                            route_edges = ["40633855#3", "40633855#4", "27673609#1", "27673609#2",
-                                           "27673609#3", "27673609#4", "1222891448#0",
-                                           "1222891447#2", "1222891447#3"]
-                            traci.route.add("amb_route", route_edges)
-                        
+                            traci.route.add("amb_route", AMB_ROUTE_EDGES)
+
                         traci.vehicle.add(vehID="ambulance_1", routeID="amb_route", typeID="emergency", depart="now", departPos="0")
                         traci.vehicle.setVehicleClass("ambulance_1", "emergency")
                         ambulance_injected = True
                         ambulance_start_time = sim_time
                         print(f"[EVAL-PPO] Ambulance injected at t={sim_time}s")
-                    except Exception as e:
+                    except Exception:
                         pass
 
                 action, _ = model.predict(obs, deterministic=True)
                 obs, reward, terminated, truncated, info = env.step(action)
-                
+
                 # Metrics
                 lanes = list(dict.fromkeys(traci.trafficlight.getControlledLanes(junction_id)))
                 metrics["waiting_time"].append(sum(traci.lane.getWaitingTime(l) for l in lanes))
                 metrics["queue_length"].append(sum(traci.lane.getLastStepHaltingNumber(l) for l in lanes))
-                
+
                 # Ambulance metrics
                 if ambulance_injected and "ambulance_1" in traci.vehicle.getIDList():
                     if traci.vehicle.getSpeed("ambulance_1") < 0.1:
@@ -366,16 +406,16 @@ def run_all_conditions(
                     if metrics["ambulance_travel_time"] is None:
                         metrics["ambulance_travel_time"] = sim_time - ambulance_start_time
                         print(f"[EVAL-PPO] Ambulance completed — travel time: {metrics['ambulance_travel_time']:.1f}s")
-                
+
                 # Run for 120 steps after ambulance completes for normalised post-event observation
                 post_clearance = 120
                 if terminated or truncated:
                     break
                 if metrics["ambulance_travel_time"] is not None and step_count > (ambulance_start_time + metrics["ambulance_travel_time"] + post_clearance):
                     break
-                    
+
                 step_count += 1
-                
+
             env.close()
             all_results["ppo_only"] = metrics
             save_metrics_csv(metrics, os.path.join(output_dir, "ppo_only.csv"), "ppo_only")
@@ -384,64 +424,150 @@ def run_all_conditions(
 
     except Exception as e:
         print(f"[EVAL] PPO-only condition failed: {e}")
+        import traceback; traceback.print_exc()
 
-    # --- Condition 3: MAESTRO-FL (PPO + Priority) ---
+    # =====================================================================
+    # CONDITION 3: PPO + FedProx (federated weights, NO priority override)
+    # =====================================================================
     print("\n" + "=" * 60)
-    print("CONDITION 3: MAESTRO-FL Full (PPO + Priority Override)")
+    print("CONDITION 3: PPO + FedProx (federated RL, no priority)")
     print("=" * 60)
     try:
+        from stable_baselines3 import PPO
+        from rl_agent.traffic_env import TrafficEnv
+        import traci
+        import pickle
+
         model_path = os.path.join("models", f"ppo_traffic_{junction_id}_final")
+        fedprox_params_path = "global_params.pkl"
+
         if os.path.exists(model_path + ".zip"):
-            print("[EVAL] Running PPO simulation WITH priority override...")
-            
+            print("[EVAL] Running PPO+FedProx simulation WITHOUT priority override...")
+
             env = TrafficEnv(junction_id=junction_id, sumo_cfg=sumo_cfg, max_steps=5000, sumo_seed=seed)
             model = PPO.load(model_path, env=env)
-            
+
+            # Apply FedProx-aggregated weights if available
+            load_fedprox_weights(model, fedprox_params_path)
+
             obs, _ = env.reset()
             metrics = {"waiting_time": [], "queue_length": [], "ambulance_travel_time": None, "ambulance_waiting_time": 0.0}
-            
+
             ambulance_injected = False
             ambulance_start_time = None
             step_count = 0
-            
+
             while True:
                 sim_time = traci.simulation.getTime()
-                
-                if not ambulance_injected and sim_time >= 50.0:
+
+                if not ambulance_injected and sim_time >= AMB_DEPART_TIME:
                     try:
                         if "amb_route" not in traci.route.getIDList():
-                            # 9-edge route (1164m) crossing the junction via 27673609#4 -> 1222891448#0
-                            # which gets a protected green ('G') in Phase 4, avoiding yield deadlocks.
-                            route_edges = ["40633855#3", "40633855#4", "27673609#1", "27673609#2",
-                                           "27673609#3", "27673609#4", "1222891448#0",
-                                           "1222891447#2", "1222891447#3"]
-                            traci.route.add("amb_route", route_edges)
-                        
+                            traci.route.add("amb_route", AMB_ROUTE_EDGES)
+
+                        traci.vehicle.add(vehID="ambulance_1", routeID="amb_route", typeID="emergency", depart="now", departPos="0")
+                        traci.vehicle.setVehicleClass("ambulance_1", "emergency")
+                        ambulance_injected = True
+                        ambulance_start_time = sim_time
+                        print(f"[EVAL-FEDPROX] Ambulance injected at t={sim_time}s")
+                    except Exception:
+                        pass
+
+                action, _ = model.predict(obs, deterministic=True)
+                obs, reward, terminated, truncated, info = env.step(action)
+
+                lanes = list(dict.fromkeys(traci.trafficlight.getControlledLanes(junction_id)))
+                metrics["waiting_time"].append(sum(traci.lane.getWaitingTime(l) for l in lanes))
+                metrics["queue_length"].append(sum(traci.lane.getLastStepHaltingNumber(l) for l in lanes))
+
+                if ambulance_injected and "ambulance_1" in traci.vehicle.getIDList():
+                    if traci.vehicle.getSpeed("ambulance_1") < 0.1:
+                        metrics["ambulance_waiting_time"] += 1.0
+                elif ambulance_injected and ambulance_start_time is not None:
+                    if metrics["ambulance_travel_time"] is None:
+                        metrics["ambulance_travel_time"] = sim_time - ambulance_start_time
+                        print(f"[EVAL-FEDPROX] Ambulance completed — travel time: {metrics['ambulance_travel_time']:.1f}s")
+
+                post_clearance = 120
+                if terminated or truncated:
+                    break
+                if metrics["ambulance_travel_time"] is not None and step_count > (ambulance_start_time + metrics["ambulance_travel_time"] + post_clearance):
+                    break
+
+                step_count += 1
+
+            env.close()
+            all_results["ppo_fedprox"] = metrics
+            save_metrics_csv(metrics, os.path.join(output_dir, "ppo_fedprox.csv"), "ppo_fedprox")
+        else:
+            print(f"[EVAL] No trained PPO model found at {model_path} — skipping.")
+
+    except Exception as e:
+        print(f"[EVAL] PPO+FedProx condition failed: {e}")
+        import traceback; traceback.print_exc()
+
+    # =====================================================================
+    # CONDITION 4: MAESTRO-FL (PPO + FedProx + Priority Override)
+    # =====================================================================
+    print("\n" + "=" * 60)
+    print("CONDITION 4: MAESTRO-FL Full (PPO + FedProx + Priority Override)")
+    print("=" * 60)
+    try:
+        from stable_baselines3 import PPO
+        from rl_agent.traffic_env import TrafficEnv
+        import traci
+
+        model_path = os.path.join("models", f"ppo_traffic_{junction_id}_final")
+        if os.path.exists(model_path + ".zip"):
+            print("[EVAL] Running PPO simulation WITH priority override...")
+
+            env = TrafficEnv(junction_id=junction_id, sumo_cfg=sumo_cfg, max_steps=5000, sumo_seed=seed)
+            model = PPO.load(model_path, env=env)
+
+            # Apply FedProx-aggregated weights if available
+            fedprox_params_path = "global_params.pkl"
+            load_fedprox_weights(model, fedprox_params_path)
+
+            obs, _ = env.reset()
+            metrics = {"waiting_time": [], "queue_length": [], "ambulance_travel_time": None, "ambulance_waiting_time": 0.0}
+
+            ambulance_injected = False
+            ambulance_start_time = None
+            step_count = 0
+
+            while True:
+                sim_time = traci.simulation.getTime()
+
+                if not ambulance_injected and sim_time >= AMB_DEPART_TIME:
+                    try:
+                        if "amb_route" not in traci.route.getIDList():
+                            traci.route.add("amb_route", AMB_ROUTE_EDGES)
+
                         traci.vehicle.add(vehID="ambulance_1", routeID="amb_route", typeID="emergency", depart="now", departPos="0")
                         traci.vehicle.setVehicleClass("ambulance_1", "emergency")
                         traci.vehicle.setSpeedMode("ambulance_1", 7)  # Ignore right-of-way at junctions
                         ambulance_injected = True
                         ambulance_start_time = sim_time
                         print(f"[EVAL-MAESTRO] Ambulance injected at t={sim_time}s")
-                        
+
                         # TRIGGER MAESTRO PRIORITY
                         env.set_priority(urgency=1.0, ttl=40.0)
-                    except Exception as e:
+                    except Exception:
                         pass
 
                 action, _ = model.predict(obs, deterministic=True)
                 obs, reward, terminated, truncated, info = env.step(action)
-                
+
                 # Apply the standalone TraCI priority mask AFTER env.step() so it overrides PPO's phase
                 if ambulance_injected and "ambulance_1" in traci.vehicle.getIDList():
                     from rl_agent.priority_mask import force_green_along_route, release_green_lock
                     force_green_along_route("ambulance_1", lookahead=2)
                     release_green_lock("ambulance_1")
-                
+
                 lanes = list(dict.fromkeys(traci.trafficlight.getControlledLanes(junction_id)))
                 metrics["waiting_time"].append(sum(traci.lane.getWaitingTime(l) for l in lanes))
                 metrics["queue_length"].append(sum(traci.lane.getLastStepHaltingNumber(l) for l in lanes))
-                
+
                 if ambulance_injected and "ambulance_1" in traci.vehicle.getIDList():
                     if traci.vehicle.getSpeed("ambulance_1") < 0.1:
                         metrics["ambulance_waiting_time"] += 1.0
@@ -450,22 +576,23 @@ def run_all_conditions(
                         metrics["ambulance_travel_time"] = sim_time - ambulance_start_time
                         print(f"[EVAL-MAESTRO] Ambulance completed — travel time: {metrics['ambulance_travel_time']:.1f}s")
                         env.clear_priority()
-                
+
                 # Run for 120 steps after ambulance completes for normalised post-event observation
                 post_clearance = 120
                 if terminated or truncated:
                     break
                 if metrics["ambulance_travel_time"] is not None and step_count > (ambulance_start_time + metrics["ambulance_travel_time"] + post_clearance):
                     break
-                    
+
                 step_count += 1
-                
+
             env.close()
             all_results["maestro_fl"] = metrics
             save_metrics_csv(metrics, os.path.join(output_dir, "maestro_fl.csv"), "maestro_fl")
-            
+
     except Exception as e:
         print(f"[EVAL] MAESTRO-FL condition failed: {e}")
+        import traceback; traceback.print_exc()
 
     # --- Generate plots ---
     if all_results:
