@@ -638,7 +638,7 @@ if __name__ == "__main__":
         default="sumo_env/network/osm.sumocfg",
         help="SUMO config file",
     )
-    parser.add_argument("--junction", default="J1", help="Junction ID")
+    parser.add_argument("--junction", default="GS_cluster_11303526465_13072877373_13072877377_13072877378_#2more", help="Junction ID")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
         "--output", default="results", help="Output directory"
