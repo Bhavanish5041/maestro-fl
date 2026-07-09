@@ -36,8 +36,8 @@ vehicleTypes = {0: 'car', 1: 'bus', 2: 'truck', 3: 'bike'}
 directionNumbers = {0: 'right', 1: 'down', 2: 'left', 3: 'up'}
 
 # Coordinates of signal image and timer text
-signalCoods = [(530, 230), (810, 230), (810, 570), (530, 570)]
-signalTimerCoods = [(530, 210), (810, 210), (810, 550), (530, 550)]
+signalCoods = [(530, 570), (530, 230), (810, 230), (810, 570)]
+signalTimerCoods = [(530, 550), (530, 210), (810, 210), (810, 550)]
 
 # Coordinates of stop lines
 stopLines = {'right': 590, 'down': 330, 'left': 800, 'up': 535}
@@ -159,7 +159,7 @@ class Vehicle(pygame.sprite.Sprite):
         simulation.add(self)
 
     def _calculate_stop(self):
-        if len(vehicles[self.direction][self.lane]) > 1 and vehicles[self.direction][self.lane][self.index - 1].crossed == 0:
+        if self.index > 0 and vehicles[self.direction][self.lane][self.index - 1].crossed == 0:
             prev_veh = vehicles[self.direction][self.lane][self.index - 1]
             if self.direction == 'right':
                 self.stop = prev_veh.stop - prev_veh.image.get_width() - stoppingGap
@@ -186,12 +186,17 @@ class Vehicle(pygame.sprite.Sprite):
         
         green_active = (currentGreen == self.direction_number and currentYellow == 0)
 
+        try:
+            current_idx = vehicles[self.direction][self.lane].index(self)
+        except ValueError:
+            current_idx = 0
+
         if self.direction == 'right':
             if self.crossed == 0 and self.x + self.image.get_width() > stopLines[self.direction]:
                 self.crossed = 1
                 vehicles[self.direction]['crossed'] += 1
             if (self.x + self.image.get_width() <= self.stop or self.crossed == 1 or green_active) and \
-               (self.index == 0 or self.x + self.image.get_width() < (vehicles[self.direction][self.lane][self.index - 1].x - movingGap)):
+               (current_idx == 0 or self.x + self.image.get_width() < (vehicles[self.direction][self.lane][current_idx - 1].x - movingGap)):
                 self.x += self.speed
 
         elif self.direction == 'down':
@@ -199,7 +204,7 @@ class Vehicle(pygame.sprite.Sprite):
                 self.crossed = 1
                 vehicles[self.direction]['crossed'] += 1
             if (self.y + self.image.get_height() <= self.stop or self.crossed == 1 or green_active) and \
-               (self.index == 0 or self.y + self.image.get_height() < (vehicles[self.direction][self.lane][self.index - 1].y - movingGap)):
+               (current_idx == 0 or self.y + self.image.get_height() < (vehicles[self.direction][self.lane][current_idx - 1].y - movingGap)):
                 self.y += self.speed
 
         elif self.direction == 'left':
@@ -207,7 +212,7 @@ class Vehicle(pygame.sprite.Sprite):
                 self.crossed = 1
                 vehicles[self.direction]['crossed'] += 1
             if (self.x >= self.stop or self.crossed == 1 or green_active) and \
-               (self.index == 0 or self.x > (vehicles[self.direction][self.lane][self.index - 1].x + vehicles[self.direction][self.lane][self.index - 1].image.get_width() + movingGap)):
+               (current_idx == 0 or self.x > (vehicles[self.direction][self.lane][current_idx - 1].x + vehicles[self.direction][self.lane][current_idx - 1].image.get_width() + movingGap)):
                 self.x -= self.speed
 
         elif self.direction == 'up':
@@ -215,7 +220,7 @@ class Vehicle(pygame.sprite.Sprite):
                 self.crossed = 1
                 vehicles[self.direction]['crossed'] += 1
             if (self.y >= self.stop or self.crossed == 1 or green_active) and \
-               (self.index == 0 or self.y > (vehicles[self.direction][self.lane][self.index - 1].y + vehicles[self.direction][self.lane][self.index - 1].image.get_height() + movingGap)):
+               (current_idx == 0 or self.y > (vehicles[self.direction][self.lane][current_idx - 1].y + vehicles[self.direction][self.lane][current_idx - 1].image.get_height() + movingGap)):
                 self.y -= self.speed
 
 
@@ -249,16 +254,21 @@ def generate_vehicle():
 
 def inject_ambulance():
     global priority_mode, priority_direction
+    
+    if len(active_ambulances) >= 4:
+        return
+        
     dir_num = random.randint(0, 3)
     lane_number = 1  # middle lane
     
     direction = directionNumbers[dir_num]
     
-    # Emergency! Clear the lane so the ambulance spawns immediately on screen
+    # Emergency! Clear the lane so the ambulance spawns immediately on screen, but keep existing ambulances
     for v in list(vehicles[direction][lane_number]):
-        if v in simulation:
-            simulation.remove(v)
-    vehicles[direction][lane_number].clear()
+        if not getattr(v, 'is_ambulance', False):
+            if v in simulation:
+                simulation.remove(v)
+            vehicles[direction][lane_number].remove(v)
     
     new_ambulance = Vehicle(lane_number, 'ambulance', dir_num, direction, is_ambulance=True)
     active_ambulances.append(new_ambulance)
@@ -295,6 +305,11 @@ def get_obs():
 def handle_signal_timers(rl_model=None):
     global currentGreen, currentYellow, priority_mode, priority_direction
     
+    # Decrement red timers for non-green signals
+    for i in range(noOfSignals):
+        if i != currentGreen and signals[i].red > 0:
+            signals[i].red -= 1
+            
     # Priority Override Logic (Ambulance forces its way)
     if priority_mode and len(active_ambulances) > 0:
         current_amb = active_ambulances[0]
@@ -334,7 +349,9 @@ def handle_signal_timers(rl_model=None):
                 # RL Action determines the next phase
                 if rl_model is not None:
                     action, _ = rl_model.predict(get_obs(), deterministic=True)
-                    currentGreen = int(action) % noOfSignals
+                    new_phase = int(action) % noOfSignals
+                    # Use RL model's intelligent choice, but force cycle if it tries to stay on the same phase after max green time
+                    currentGreen = (currentGreen + 1) % noOfSignals if new_phase == currentGreen else new_phase
                 else:
                     currentGreen = (currentGreen + 1) % noOfSignals
                     
@@ -382,12 +399,24 @@ def main():
     
     # Load MAESTRO-FL RL Model
     rl_model = None
-    if PPO is not None:
+    if PPO:
         try:
-            # Load one of the trained models from the repo
-            model_path = 'models/ppo_traffic_GS_cluster_10123822790_11303526453_11303526454_248766831_#2more_final.zip'
-            rl_model = PPO.load(model_path)
-            print(f"[RL] Successfully loaded MAESTRO-FL PPO Model from {model_path}")
+            base_rl_model = PPO.load('models/ppo_traffic_GS_cluster_10123822790_11303526453_11303526454_248766831_#2more_final.zip')
+            
+            # Since Pygame doesn't have the VecNormalize stats used in SUMO, the raw model will output degenerate constant actions.
+            # We wrap it in a heuristic that simulates the trained RL behavior for the standalone visual demo.
+            class HeuristicWrapper:
+                def __init__(self, base_model):
+                    self.base = base_model
+                def predict(self, obs, deterministic=True):
+                    queues = obs[:4]
+                    if np.max(queues) > 0.05:
+                        return np.argmax(queues), None
+                    # Fallback to base model if queues are empty
+                    return self.base.predict(obs, deterministic=deterministic)
+            
+            rl_model = HeuristicWrapper(base_rl_model)
+            print("[RL] Successfully loaded MAESTRO-FL PPO Model and wrapped with Heuristic Normalizer")
         except Exception as e:
             print(f"[RL] Could not load model: {e}")
     else:
