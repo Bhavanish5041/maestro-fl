@@ -160,6 +160,8 @@ def run_emergency_baseline(
 
     ambulance_injected = False
     ambulance_start_time = None
+    ambulance_done_step = None
+    post_clearance = 120
     step = 0
 
     try:
@@ -233,14 +235,22 @@ def run_emergency_baseline(
             elif ambulance_injected and ambulance_start_time is not None:
                 if metrics["ambulance_travel_time"] is None:
                     metrics["ambulance_travel_time"] = sim_time - ambulance_start_time
+                    ambulance_done_step = step
                     print(
                         f"[BASELINE] Ambulance completed — "
                         f"travel time: {metrics['ambulance_travel_time']:.1f}s"
                     )
 
+            # Stop after post-clearance window once ambulance is done
+            if ambulance_done_step is not None and step > ambulance_done_step + post_clearance:
+                break
+
             step += 1
 
     finally:
-        traci.close()
+        try:
+            traci.close()
+        except Exception:
+            pass
 
     return metrics

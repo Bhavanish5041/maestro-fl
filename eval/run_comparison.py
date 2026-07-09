@@ -37,6 +37,8 @@ except ImportError:
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import traci
+
 def load_fedprox_weights(model, fedprox_params_path: str):
     import os
     import pickle
@@ -359,6 +361,11 @@ def run_all_conditions(
     except Exception as e:
         print(f"[EVAL] Fixed timer failed: {e}")
         import traceback; traceback.print_exc()
+    finally:
+        try:
+            traci.close()
+        except Exception:
+            pass
 
     # =====================================================================
     # CONDITION 2: PPO Only (no federation, no priority)
@@ -370,6 +377,13 @@ def run_all_conditions(
         from stable_baselines3 import PPO
         from rl_agent.traffic_env import TrafficEnv
         import traci
+
+        # Force-close any stale connection from previous condition
+        try:
+            if traci.isLoaded():
+                traci.close()
+        except Exception:
+            pass
 
         model_path = os.path.join("models", f"ppo_traffic_{junction_id}_final")
         if os.path.exists(model_path + ".zip"):
@@ -449,6 +463,13 @@ def run_all_conditions(
         from rl_agent.traffic_env import TrafficEnv
         import traci
         import pickle
+
+        # Force-close any stale connection from previous condition
+        try:
+            if traci.isLoaded():
+                traci.close()
+        except Exception:
+            pass
 
         model_path = os.path.join("models", f"ppo_traffic_{junction_id}_final")
         fedprox_params_path = "global_params.pkl"
@@ -531,6 +552,13 @@ def run_all_conditions(
         from stable_baselines3 import PPO
         from rl_agent.traffic_env import TrafficEnv
         import traci
+
+        # Force-close any stale connection from previous condition
+        try:
+            if traci.isLoaded():
+                traci.close()
+        except Exception:
+            pass
 
         model_path = os.path.join("models", f"ppo_traffic_{junction_id}_final")
         if os.path.exists(model_path + ".zip"):
@@ -632,18 +660,24 @@ def run_all_conditions(
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    # Resolve defaults relative to repo root (parent of eval/)
+    REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
     parser = argparse.ArgumentParser(description="Run MAESTRO-FL comparison")
     parser.add_argument(
         "--sumo-cfg",
-        default="sumo_env/network/osm.sumocfg",
+        default=os.path.join(REPO_ROOT, "sumo_env", "network", "osm.sumocfg"),
         help="SUMO config file",
     )
     parser.add_argument("--junction", default="GS_cluster_11303526465_13072877373_13072877377_13072877378_#2more", help="Junction ID")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
-        "--output", default="results", help="Output directory"
+        "--output", default=os.path.join(REPO_ROOT, "results"), help="Output directory"
     )
     args = parser.parse_args()
+
+    # Ensure model paths resolve correctly regardless of CWD
+    os.chdir(REPO_ROOT)
 
     run_all_conditions(
         sumo_cfg=args.sumo_cfg,

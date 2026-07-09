@@ -20,15 +20,21 @@ import traci
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(REPO_ROOT, "rl_agent"))
 
-from priority_mask import force_green_along_route, release_green_lock  # noqa: E402
+from priority_mask import (  # noqa: E402
+    force_green_along_route,
+    release_green_lock,
+    maybe_use_wrong_side,
+    restore_normal_driving,
+)
 
 # --- Config ---
 SUMO_CFG = os.path.join(REPO_ROOT, "sumo_env", "network", "osm.sumocfg")
 AMBULANCE_DEPART_STEP = 50      # let normal traffic build up first
 STEP_DELAY_MS = 100             # GUI playback delay; raise for slower/more watchable
 ZOOM_LEVEL = 3000
-LOOKAHEAD_JUNCTIONS = 5
+LOOKAHEAD_JUNCTIONS = 4         # how many junctions ahead to pre-green
 MAX_STEPS = 1000                # safety cap so the demo can't run forever
+WRONG_SIDE_WAIT = 8.0           # seconds blocked before trying wrong side
 
 
 def discover_ambulance_route():
@@ -123,8 +129,13 @@ def run_live_demo():
                     ambulance_injected = True  # don't retry every step
 
             if ambulance_injected and "ambulance_1" in traci.vehicle.getIDList():
+                # 1. Force green lights ahead of ambulance
                 force_green_along_route("ambulance_1", lookahead=LOOKAHEAD_JUNCTIONS)
                 release_green_lock("ambulance_1")
+                # 2. If stuck at red / blocked traffic → try wrong side of road
+                maybe_use_wrong_side("ambulance_1", wait_threshold=WRONG_SIDE_WAIT)
+                # 3. Restore normal driving once it's moving again
+                restore_normal_driving("ambulance_1")
             elif ambulance_injected and not ambulance_done:
                 print(f"[DEMO] Ambulance completed its route at step {step}")
                 ambulance_done = True
