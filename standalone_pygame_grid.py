@@ -139,6 +139,9 @@ intersections = {
 simulation = pygame.sprite.Group()
 ring_effects = []
 
+# Ambulance HUD state (set by inject_ambulance, read by main loop)
+ambulance_active = None
+
 class RingEffect:
     def __init__(self, x, y):
         self.x, self.y = x, y
@@ -296,7 +299,9 @@ def generate_route():
     Vehicle(route, v_type)
 
 def inject_ambulance():
-    if sum(1 for v in simulation if getattr(v, 'is_ambulance', False)) >= 4:
+    global ambulance_active
+    # Only one ambulance at a time for clean demo narration
+    if any(getattr(v, 'is_ambulance', False) for v in simulation):
         return
         
     paths = [
@@ -316,6 +321,21 @@ def inject_ambulance():
                 e.vehicles.remove(v)
                 
     amb = Vehicle(route, 'ambulance', is_ambulance=True)
+    
+    # Count unique intersections this ambulance will pass through
+    total_inters = len(set(
+        edges[eid].target_intersection for eid in route
+        if edges[eid].target_intersection is not None
+    ))
+    
+    # Set up ambulance HUD tracking
+    ambulance_active = {
+        'amb': amb,
+        'start_tick': pygame.time.get_ticks(),
+        'total_intersections': total_inters,
+        'cleared_count': 0,
+        'completed_tick': None
+    }
     
     # Register with all intersections in its route
     for edge_id in route:
@@ -345,7 +365,10 @@ def get_obs(inter):
     
     return np.array(queues + [phase, time_in_phase, priority_flag, 0.0], dtype=np.float32)
 
-def handle_signals(rl_model=None):
+def handle_signals(rl_model=None, mode_state=None):
+    global ambulance_active
+    use_rl = mode_state['use_rl'] if mode_state else True
+    
     for inter in intersections.values():
         # Priority Logic
         if inter.priority_mode and len(inter.active_ambulances) > 0:
@@ -353,6 +376,11 @@ def handle_signals(rl_model=None):
             # Check if ambulance crossed this intersection (its current edge_idx is past the target edge)
             if amb not in simulation or amb.edge_idx > target_edge_idx:
                 inter.active_ambulances.pop(0)
+                # Update ambulance HUD cleared count
+                if ambulance_active is not None and ambulance_active['amb'] is amb:
+                    ambulance_active['cleared_count'] += 1
+                    if ambulance_active['cleared_count'] >= ambulance_active['total_intersections']:
+                        ambulance_active['completed_tick'] = pygame.time.get_ticks()
                 if len(inter.active_ambulances) == 0:
                     inter.priority_mode = False
                     inter.priority_direction = -1
@@ -378,7 +406,7 @@ def handle_signals(rl_model=None):
                 if inter.priority_mode:
                     inter.currentGreen = inter.priority_direction
                 else:
-                    if rl_model:
+                    if rl_model and use_rl:
                         action, _ = rl_model.predict(get_obs(inter), deterministic=True)
                         new_phase = int(action) % 4
                         # Use RL model's intelligent choice, but force cycle if it tries to stay on the same phase after max green time
@@ -389,7 +417,7 @@ def handle_signals(rl_model=None):
         elif inter.currentYellow == 0 and not inter.priority_mode:
             inter.timer_green -= 1
             if inter.timer_green % 5 == 0 and inter.timer_green > 0:
-                if rl_model:
+                if rl_model and use_rl:
                     action, _ = rl_model.predict(get_obs(inter), deterministic=True)
                     new_phase = int(action) % 4
                     if new_phase != inter.currentGreen:
@@ -401,6 +429,7 @@ def handle_signals(rl_model=None):
                 inter.timer_yellow = defaultYellow
 
 def main():
+    global ambulance_active
     clock = pygame.time.Clock()
     rl_model = None
     if PPO:
@@ -424,20 +453,36 @@ def main():
         except Exception as e:
             print(f"Error loading model: {e}")
 
+    mode_state = {'use_rl': True}
+    
     pygame.time.set_timer(pygame.USEREVENT + 1, 800)  # Spawn
     pygame.time.set_timer(pygame.USEREVENT + 2, 1000) # Timers
+
+    sim_start_time = pygame.time.get_ticks()
 
     running = True
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT: running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_a: inject_ambulance()
-            elif event.type == pygame.USEREVENT + 1: generate_route()
-            elif event.type == pygame.USEREVENT + 2: handle_signals(rl_model)
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_a:
+                    inject_ambulance()
+                elif event.key == pygame.K_f:
+                    mode_state['use_rl'] = not mode_state['use_rl']
+            elif event.type == pygame.USEREVENT + 1:
+                # Ramp up spawns in first 15s for visible congestion
+                elapsed = pygame.time.get_ticks() - sim_start_time
+                if elapsed < 15000:
+                    generate_route()
+                    generate_route()
+                else:
+                    generate_route()
+            elif event.type == pygame.USEREVENT + 2:
+                handle_signals(rl_model, mode_state)
 
         screen.blit(background, (0, 0))
 
-        # Render signals
+        # Render signals + queue counters
         for inter in intersections.values():
             for i in range(4):
                 coord = inter.signalCoods[i]
@@ -453,6 +498,21 @@ def main():
                     screen.blit(redSignal, coord)
                     txt = font.render("--", True, (255,255,255))
                 screen.blit(txt, tcoord)
+            
+            # Queue counter per intersection
+            total_queue = 0
+            for e in edges.values():
+                if e.target_intersection == inter.id:
+                    total_queue += sum(1 for v in e.vehicles if v.pos > e.length - 100)
+            if total_queue > 6:
+                q_color = (255, 80, 80)
+            elif total_queue > 3:
+                q_color = (255, 255, 80)
+            else:
+                q_color = (255, 255, 255)
+            cx, cy = nodes[inter.id]
+            q_txt = font.render(f"Q:{total_queue}", True, q_color)
+            screen.blit(q_txt, (cx - 40, cy - 20))
 
         # Move & render vehicles
         for v in simulation:
@@ -464,12 +524,44 @@ def main():
             r.draw(screen)
             if r.dead: ring_effects.remove(r)
 
-        # UI
-        ui_bg = pygame.Surface((300, 100), pygame.SRCALPHA)
+        # Expire completed ambulance HUD after 3 seconds
+        if ambulance_active is not None and ambulance_active['completed_tick'] is not None:
+            if pygame.time.get_ticks() - ambulance_active['completed_tick'] > 3000:
+                ambulance_active = None
+
+        # UI HUD Panel
+        hud_height = 160
+        if ambulance_active is not None:
+            hud_height = 220
+        ui_bg = pygame.Surface((340, hud_height), pygame.SRCALPHA)
         ui_bg.fill((0, 0, 0, 180))
         screen.blit(ui_bg, (10, 10))
+        
         screen.blit(font.render("Press 'A' for Ambulance", True, (255,255,255)), (20, 20))
-        screen.blit(font.render("2x2 Multi-Intersection Grid", True, (100,255,100)), (20, 60))
+        screen.blit(font.render("Press 'F' to toggle mode", True, (255,255,255)), (20, 44))
+        
+        # Mode indicator
+        if mode_state['use_rl']:
+            mode_txt = font.render("MODE: ADAPTIVE (PPO)", True, (100, 255, 100))
+        else:
+            mode_txt = font.render("MODE: FIXED TIMER", True, (255, 180, 80))
+        screen.blit(mode_txt, (20, 72))
+        
+        screen.blit(font.render("2x2 Multi-Intersection Grid", True, (100,255,100)), (20, 100))
+        
+        # Ambulance HUD
+        if ambulance_active is not None:
+            if ambulance_active['completed_tick'] is not None:
+                elapsed_s = (ambulance_active['completed_tick'] - ambulance_active['start_tick']) / 1000.0
+                amb_line1 = f"Ambulance CLEARED in {elapsed_s:.1f}s"
+                amb_color1 = (100, 255, 100)
+            else:
+                elapsed_s = (pygame.time.get_ticks() - ambulance_active['start_tick']) / 1000.0
+                amb_line1 = f"Ambulance en route: {elapsed_s:.1f}s"
+                amb_color1 = (255, 100, 100)
+            amb_line2 = f"Signals cleared: {ambulance_active['cleared_count']}/{ambulance_active['total_intersections']}"
+            screen.blit(font.render(amb_line1, True, amb_color1), (20, 132))
+            screen.blit(font.render(amb_line2, True, (255, 255, 255)), (20, 156))
 
         pygame.display.flip()
         clock.tick(60)
