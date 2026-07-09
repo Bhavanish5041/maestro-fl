@@ -292,6 +292,7 @@ def run_all_conditions(
     junction_id: str,
     seed: int = 42,
     output_dir: str = "results",
+    pygame_results: bool = False,
 ) -> Dict[str, Dict]:
     """
     Run all 4 experimental conditions and collect results.
@@ -624,6 +625,29 @@ def run_all_conditions(
         for k, v in summary.items():
             print(f"    {k}: {v:.2f}")
 
+    if pygame_results and "fixed_timer" in all_results and "maestro_fl" in all_results:
+        try:
+            from visualization.pygame_renderer import MAESTRORenderer
+
+            def renderer_summary(metrics):
+                return {
+                    "ambulance_travel_time": metrics.get("ambulance_travel_time") or 0.0,
+                    "ambulance_waiting_time": metrics.get("ambulance_waiting_time") or 0.0,
+                    "avg_queue_length": float(np.mean(metrics.get("queue_length", [0.0]) or [0.0])),
+                }
+
+            renderer = MAESTRORenderer(
+                net_file=os.path.join("sumo_env", "network", "osm_fixed.net.xml"),
+                start_thread=False,
+            )
+            renderer.show_comparison_screen(
+                renderer_summary(all_results["fixed_timer"]),
+                renderer_summary(all_results["maestro_fl"]),
+            )
+            renderer.stop()
+        except Exception as e:
+            print(f"[EVAL] Could not show Pygame results screen: {e}")
+
     return all_results
 
 
@@ -643,6 +667,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output", default="results", help="Output directory"
     )
+    parser.add_argument(
+        "--pygame-results",
+        action="store_true",
+        help="Show the final fixed-timer vs MAESTRO-FL results screen in Pygame",
+    )
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="Alias for --pygame-results",
+    )
     args = parser.parse_args()
 
     run_all_conditions(
@@ -650,4 +684,5 @@ if __name__ == "__main__":
         junction_id=args.junction,
         seed=args.seed,
         output_dir=args.output,
+        pygame_results=args.pygame_results or args.compare,
     )

@@ -45,7 +45,8 @@ async def broadcast_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global runner
-    runner = SumoRunner(state_queue, asyncio.get_running_loop())
+    enable_pygame = os.environ.get("MAESTRO_PYGAME", "1").lower() not in {"0", "false", "no"}
+    runner = SumoRunner(state_queue, asyncio.get_running_loop(), enable_pygame=enable_pygame)
     asyncio.create_task(broadcast_loop())
     yield
 

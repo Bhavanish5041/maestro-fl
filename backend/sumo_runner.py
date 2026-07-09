@@ -30,6 +30,12 @@ sys.path.append(os.path.join(REPO_ROOT, "rl_agent"))
 from rl_agent.priority_mask import force_green_along_route, release_green_lock
 from backend.coordinate_utils import sumo_to_latlon, get_junction_positions
 
+try:
+    from visualization.pygame_renderer import MAESTRORenderer
+except Exception as e:
+    MAESTRORenderer = None
+    print(f"[SumoRunner] Pygame renderer unavailable: {e}")
+
 SUMO_CFG = os.path.join(REPO_ROOT, "sumo_env", "network", "osm.sumocfg")
 TLS_ID = "GS_cluster_11303526465_13072877373_13072877377_13072877378_#2more"
 
@@ -41,9 +47,11 @@ AMB_FROM_EDGE = "1044521114#0"
 AMB_TO_EDGE = "-1102792424"
 
 class SumoRunner:
-    def __init__(self, state_queue: asyncio.Queue, loop: asyncio.AbstractEventLoop):
+    def __init__(self, state_queue: asyncio.Queue, loop: asyncio.AbstractEventLoop, enable_pygame: bool = True):
         self.state_queue = state_queue
         self.loop = loop
+        self.enable_pygame = enable_pygame
+        self.renderer = None
         
         self.thread = None
         self.running = False
@@ -55,6 +63,7 @@ class SumoRunner:
         self.model = None
         self.env_sim = None
         self.junction_positions = {}
+        self.junction_positions_xy = {}
 
         # Priority wave tracking
         self._synced_junctions = set()
@@ -75,6 +84,9 @@ class SumoRunner:
     def stop_simulation(self):
         self.running = False
         self.reset_requested = True
+        if self.renderer:
+            self.renderer.stop()
+            self.renderer = None
         if self.thread:
             self.thread.join(timeout=2.0)
 
@@ -86,6 +98,19 @@ class SumoRunner:
 
     def request_inject(self):
         self.inject_requested = True
+
+    def _handle_renderer_command(self, command):
+        if command == "quit":
+            self.running = False
+            self.reset_requested = True
+        elif command == "toggle_pause":
+            self.paused = not self.paused
+        elif command == "inject_ambulance":
+            self.request_inject()
+        elif command.startswith("condition:"):
+            self.condition = command.split(":", 1)[1]
+        elif command == "reset_camera":
+            pass
 
     def _sim_loop(self):
         try:
@@ -100,6 +125,12 @@ class SumoRunner:
             self._push_state({"error": err_msg})
         finally:
             self.running = False
+            if self.renderer:
+                try:
+                    self.renderer.stop()
+                except Exception:
+                    pass
+                self.renderer = None
             try:
                 traci.close()
             except:
@@ -147,20 +178,41 @@ class SumoRunner:
             return None, None
 
     def _push_state(self, state_dict):
+        if self.renderer:
+            try:
+                self.renderer.update(state_dict)
+            except Exception as e:
+                print(f"[SumoRunner] Renderer update failed: {e}")
+                try:
+                    self.renderer.stop()
+                except Exception:
+                    pass
+                self.renderer = None
         # Fire and forget into asyncio loop
         self.loop.call_soon_threadsafe(self.state_queue.put_nowait, state_dict)
 
     def _run_traci(self):
+        sumo_binary = "sumo" if self.enable_pygame else "sumo-gui"
         traci.start([
-            "sumo-gui",
+            sumo_binary,
             "-c", SUMO_CFG,
             "--start",
-            "--delay", "150",
             "--no-step-log", "true",
             "--quit-on-end", "false",
         ])
+
+        if self.enable_pygame and MAESTRORenderer is not None:
+            try:
+                self.renderer = MAESTRORenderer(
+                    net_file=os.path.join(REPO_ROOT, "sumo_env", "network", "osm_fixed.net.xml"),
+                    command_callback=self._handle_renderer_command,
+                )
+            except Exception as e:
+                self.renderer = None
+                print(f"[SumoRunner] Could not start Pygame renderer; continuing headless dashboard only: {e}")
         
         self.junction_positions = {}
+        self.junction_positions_xy = {}
         for tls in traci.trafficlight.getIDList():
             # Get a node associated with the tls
             # For simplicity, we just use the first controlled link's junction coordinate
@@ -173,8 +225,10 @@ class SumoRunner:
                 x, y = traci.junction.getPosition(to_node)
                 lat, lon = sumo_to_latlon(x, y)
                 self.junction_positions[tls] = {"lat": lat, "lon": lon}
+                self.junction_positions_xy[tls] = {"x": x, "y": y}
             else:
                 self.junction_positions[tls] = {"lat": 12.9165, "lon": 77.5831} # fallback
+                self.junction_positions_xy[tls] = {"x": 0.0, "y": 0.0}
                 
         step = 0
         ambulance_active = False
@@ -239,12 +293,12 @@ class SumoRunner:
                                 env_helper.priority_active = True
                                 env_helper.priority_urgency = 1.0
 
-                        # Track ambulance in SUMO-GUI so it's visible
-                        try:
-                            traci.gui.trackVehicle("View #0", "ambulance_1")
-                            traci.gui.setZoom("View #0", 3000)
-                        except traci.exceptions.TraCIException:
-                            print("[SumoRunner] Warning: camera tracking failed (non-fatal)")
+                        if not self.enable_pygame:
+                            try:
+                                traci.gui.trackVehicle("View #0", "ambulance_1")
+                                traci.gui.setZoom("View #0", 3000)
+                            except traci.exceptions.TraCIException:
+                                print("[SumoRunner] Warning: camera tracking failed (non-fatal)")
 
                         ambulance_active = True
                         ambulance_start_time = step
@@ -337,6 +391,10 @@ class SumoRunner:
                             "junction_id": jid,
                             "timestamp": step,
                             "queue_before": q_before,
+                            "pos": [
+                                self.junction_positions_xy.get(jid, {}).get("x", 0.0),
+                                self.junction_positions_xy.get(jid, {}).get("y", 0.0),
+                            ],
                         })
                         print(f"[SumoRunner] priority_sync fired for {jid[:20]}... (queue={q_before})")
 
@@ -359,7 +417,14 @@ class SumoRunner:
                 "ambulance": {"active": False},
                 "junctions": [],
                 "metrics": {},
-                "fl": fl_state
+                "fl": fl_state,
+                "render": {
+                    "vehicles": [],
+                    "lanes": [],
+                    "traffic_lights": [],
+                    "active_priority_junctions": list(self._synced_junctions),
+                    "vehicle_count": 0,
+                }
             }
             
             if ambulance_active and "ambulance_1" in traci.vehicle.getIDList():
@@ -379,12 +444,18 @@ class SumoRunner:
             total_wait = 0
             total_queue = 0
             num_lanes = 0
+            seen_lanes = set()
             
             for tls in self.junction_positions.keys():
                 lanes = list(dict.fromkeys(traci.trafficlight.getControlledLanes(tls)))
                 j_wait = sum(traci.lane.getWaitingTime(l) for l in lanes)
                 j_queue = sum(traci.lane.getLastStepHaltingNumber(l) for l in lanes)
                 phase = traci.trafficlight.getPhase(tls)
+                tls_state = traci.trafficlight.getRedYellowGreenState(tls)
+                try:
+                    phase_remaining = max(0.0, traci.trafficlight.getNextSwitch(tls) - traci.simulation.getTime())
+                except Exception:
+                    phase_remaining = None
                 
                 total_wait += j_wait
                 total_queue += j_queue
@@ -399,6 +470,31 @@ class SumoRunner:
                     "current_phase": phase,
                     "priority_override": priority_active and tls == TLS_ID
                 })
+
+                state_payload["render"]["traffic_lights"].append({
+                    "id": tls,
+                    "state": tls_state,
+                    "phase": phase,
+                    "phase_remaining": phase_remaining,
+                    "priority_override": priority_active and tls == TLS_ID,
+                    "pos": [
+                        self.junction_positions_xy.get(tls, {}).get("x", 0.0),
+                        self.junction_positions_xy.get(tls, {}).get("y", 0.0),
+                    ],
+                })
+
+                for lane_id in lanes:
+                    if lane_id in seen_lanes:
+                        continue
+                    seen_lanes.add(lane_id)
+                    try:
+                        state_payload["render"]["lanes"].append({
+                            "id": lane_id,
+                            "queue": traci.lane.getLastStepHaltingNumber(lane_id),
+                            "edge_id": traci.lane.getEdgeID(lane_id),
+                        })
+                    except Exception:
+                        pass
                 
             state_payload["metrics"] = {
                 "avg_waiting_time": round(total_wait / max(num_lanes, 1), 2),
@@ -406,6 +502,25 @@ class SumoRunner:
                 "throughput": traci.simulation.getArrivedNumber()
             }
 
+            vehicle_ids = traci.vehicle.getIDList()
+            state_payload["render"]["vehicle_count"] = len(vehicle_ids)
+            for veh_id in vehicle_ids:
+                try:
+                    x, y = traci.vehicle.getPosition(veh_id)
+                    state_payload["render"]["vehicles"].append({
+                        "id": veh_id,
+                        "pos": [x, y],
+                        "angle": traci.vehicle.getAngle(veh_id),
+                        "speed": traci.vehicle.getSpeed(veh_id),
+                    })
+                except Exception:
+                    pass
+
             self._push_state(state_payload)
-            
-            time.sleep(0.15) # ~7 FPS, slow enough for humans to follow
+
+            # Throttle the steps so the simulation runs at a human-comprehensible speed.
+            # 1.0s sleep per step to match the 1.0s SUMO step size (real-time).
+            if self.renderer:
+                time.sleep(1.0)
+            else:
+                time.sleep(0.15)
