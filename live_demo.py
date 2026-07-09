@@ -27,21 +27,34 @@ from priority_mask import (  # noqa: E402
     restore_normal_driving,
 )
 
-# --- Config ---
+import argparse
+
+# --- Config Defaults ---
 SUMO_CFG = os.path.join(REPO_ROOT, "sumo_env", "network", "osm.sumocfg")
 AMBULANCE_DEPART_STEP = 50      # let normal traffic build up first
 STEP_DELAY_MS = 100             # GUI playback delay; raise for slower/more watchable
 ZOOM_LEVEL = 3000
 LOOKAHEAD_JUNCTIONS = 4         # how many junctions ahead to pre-green
-MAX_STEPS = 1000                # safety cap so the demo can't run forever
 WRONG_SIDE_WAIT = 8.0           # seconds blocked before trying wrong side
 
 
-def discover_ambulance_route():
+def discover_ambulance_route(start_edge=None, end_edge=None):
     """
-    Dynamically find a valid ambulance route through the first TLS junction.
-    Uses existing vehicle routes or SUMO's findRoute to guarantee validity.
+    Find a valid ambulance route. If start_edge and end_edge are provided,
+    calculates a route between them. Otherwise, dynamically finds a route through the junction.
     """
+    # Custom start and end destinations provided by the user
+    if start_edge and end_edge:
+        try:
+            route = traci.simulation.findRoute(start_edge, end_edge)
+            if route.edges:
+                print(f"[DEMO] Successfully routed from custom start '{start_edge}' to end '{end_edge}' ({len(route.edges)} edges)")
+                return list(route.edges)
+            else:
+                print(f"[DEMO] Warning: findRoute returned empty route between '{start_edge}' and '{end_edge}'. Falling back to discovery.")
+        except Exception as e:
+            print(f"[DEMO] Error routing between '{start_edge}' and '{end_edge}': {e}. Falling back to discovery.")
+
     tls_list = traci.trafficlight.getIDList()
     if not tls_list:
         print("[DEMO] No traffic lights found!")
@@ -70,8 +83,8 @@ def discover_ambulance_route():
     all_edges = [e for e in traci.edge.getIDList() if not e.startswith(":")]
     target_edge = tls_edges[0]
     for _ in range(100):
-        start_edge = random.choice(all_edges)
-        route = traci.simulation.findRoute(start_edge, target_edge)
+        start = random.choice(all_edges)
+        route = traci.simulation.findRoute(start, target_edge)
         if route.edges and len(route.edges) > 3:
             return list(route.edges)
 
@@ -79,8 +92,8 @@ def discover_ambulance_route():
     return None
 
 
-def inject_ambulance():
-    route_edges = discover_ambulance_route()
+def inject_ambulance(start_edge=None, end_edge=None):
+    route_edges = discover_ambulance_route(start_edge, end_edge)
     if not route_edges:
         return False
 
@@ -97,7 +110,7 @@ def inject_ambulance():
     return True
 
 
-def run_live_demo():
+def run_live_demo(start_edge=None, end_edge=None, max_steps=1000):
     traci.start([
         "sumo-gui",
         "-c", SUMO_CFG,
@@ -107,17 +120,18 @@ def run_live_demo():
     ])
 
     ambulance_injected = False
+    ambulance_spawned = False
     ambulance_done = False
     step = 0
 
     try:
-        while step < MAX_STEPS:
+        while step < max_steps:
             if traci.simulation.getMinExpectedNumber() <= 0 and ambulance_injected:
                 # Nothing left to simulate and ambulance already ran its course
                 break
 
             if not ambulance_injected and step >= AMBULANCE_DEPART_STEP:
-                if inject_ambulance():
+                if inject_ambulance(start_edge, end_edge):
                     ambulance_injected = True
                     try:
                         traci.gui.trackVehicle("View #0", "ambulance_1")
@@ -128,7 +142,8 @@ def run_live_demo():
                     print("[DEMO] Could not inject ambulance — continuing without it")
                     ambulance_injected = True  # don't retry every step
 
-            if ambulance_injected and "ambulance_1" in traci.vehicle.getIDList():
+            if "ambulance_1" in traci.vehicle.getIDList():
+                ambulance_spawned = True
                 # 1. Force green lights ahead of ambulance
                 force_green_along_route("ambulance_1", lookahead=LOOKAHEAD_JUNCTIONS)
                 release_green_lock("ambulance_1")
@@ -136,7 +151,7 @@ def run_live_demo():
                 maybe_use_wrong_side("ambulance_1", wait_threshold=WRONG_SIDE_WAIT)
                 # 3. Restore normal driving once it's moving again
                 restore_normal_driving("ambulance_1")
-            elif ambulance_injected and not ambulance_done:
+            elif ambulance_spawned and not ambulance_done:
                 print(f"[DEMO] Ambulance completed its route at step {step}")
                 ambulance_done = True
 
@@ -149,4 +164,10 @@ def run_live_demo():
 
 
 if __name__ == "__main__":
-    run_live_demo()
+    parser = argparse.ArgumentParser(description="MAESTRO-FL Live Demo Options")
+    parser.add_argument("--start", type=str, default=None, help="Initial edge ID for the ambulance route (e.g. '28087618#0')")
+    parser.add_argument("--end", type=str, default=None, help="Final edge ID for the ambulance route (e.g. '172930638#4')")
+    parser.add_argument("--steps", type=int, default=1500, help="Maximum simulation steps to run (default: 1500)")
+    args = parser.parse_args()
+
+    run_live_demo(start_edge=args.start, end_edge=args.end, max_steps=args.steps)

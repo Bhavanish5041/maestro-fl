@@ -604,9 +604,16 @@ def run_all_conditions(
 
                 # Apply the standalone TraCI priority mask AFTER env.step() so it overrides PPO's phase
                 if ambulance_injected and "ambulance_1" in traci.vehicle.getIDList():
-                    from rl_agent.priority_mask import force_green_along_route, release_green_lock
-                    force_green_along_route("ambulance_1", lookahead=2)
+                    from rl_agent.priority_mask import (
+                        force_green_along_route,
+                        release_green_lock,
+                        maybe_use_wrong_side,
+                        restore_normal_driving,
+                    )
+                    force_green_along_route("ambulance_1", lookahead=4)
                     release_green_lock("ambulance_1")
+                    maybe_use_wrong_side("ambulance_1", wait_threshold=8.0)
+                    restore_normal_driving("ambulance_1")
 
                 lanes = list(dict.fromkeys(traci.trafficlight.getControlledLanes(junction_id)))
                 metrics["waiting_time"].append(sum(traci.lane.getWaitingTime(l) for l in lanes))
