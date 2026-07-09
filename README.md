@@ -76,13 +76,16 @@ python -m rl_agent.train_ppo --sumo-cfg sumo_env/network/osm.sumocfg
 python -m federated.server --rounds 20 --mu 0.1
 
 # 8. Run the full simulation with ambulance + priority
-python run_simulation.py
+python run_simulation.py --gui
 
 # 9. Run all 4 experimental conditions + generate plots
 python -m eval.run_comparison --sumo-cfg sumo_env/network/osm.sumocfg
 
-# 10. Live demo with SUMO GUI
+# 10. Live demo with SUMO-GUI (camera auto-tracks ambulance)
 python live_demo.py
+
+# 11. Web dashboard (opens at http://localhost:8000)
+python -m backend.server
 ```
 
 ## Module Overview
@@ -95,6 +98,8 @@ python live_demo.py
 | `prediction/` | LSTM congestion forecasting | `lstm_model.py`, `train_lstm.py`, `data_prep.py` |
 | `federated/` | FL coordination + emergency trigger | `client.py`, `server.py`, `priority_trigger.py` |
 | `eval/` | Baselines + comparison plots | `baseline_fixed_timer.py`, `run_comparison.py` |
+| `backend/` | Dashboard web server + SUMO runner | `server.py`, `sumo_runner.py`, `coordinate_utils.py` |
+| `dashboard/` | Web dashboard frontend | `index.html`, `style.css`, `app.js` |
 
 ## The Novel Contribution
 
@@ -140,10 +145,10 @@ This happens **outside** the normal FL round schedule - no waiting for the next 
 | Emergency event detection | Complete |
 | 4-condition comparison runner | Complete |
 | Live demo (sumo-gui) | Complete |
+| Web dashboard + backend server | Complete |
 
 ## Pending Work
 
 - Multi-junction concurrent PPO: not yet tested with multiple SUMO instances
-- Web dashboard: not built
 - V2I communication layer: not built
 - Weather-aware timing: not built

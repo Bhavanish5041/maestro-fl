@@ -5,3 +5,21 @@ __pycache__/
 .DS_Store
 2026-*/
 *.log
+
+# SUMO generated outputs
+edgeData.xml
+tripinfos.xml
+stats.xml
+stopinfos.xml
+vehroutes.xml
+*.errorlog
+
+# Intermediate model checkpoints (keep only *_final.zip)
+models/*_steps.zip
+
+# Generated data/logs
+sumo_env/logs/*.csv
+synthetic_traffic_log.csv
+
+# Scratch/debug scripts
+scratch/

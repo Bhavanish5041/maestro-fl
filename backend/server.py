@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -6,14 +7,9 @@ import os
 
 from backend.sumo_runner import SumoRunner
 
-app = FastAPI(title="MAESTRO-FL Dashboard")
-
 # Determine paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DASHBOARD_PATH = os.path.join(BASE_DIR, "dashboard", "index.html")
-
-# Create dashboard directory if not exists
-os.makedirs(os.path.join(BASE_DIR, "dashboard"), exist_ok=True)
+DASHBOARD_DIR = os.path.join(BASE_DIR, "dashboard")
 
 # State Queue
 state_queue = asyncio.Queue()
@@ -41,24 +37,19 @@ class ConnectionManager:
 manager = ConnectionManager()
 runner = None
 
-@app.on_event("startup")
-async def startup_event():
-    global runner
-    runner = SumoRunner(state_queue, asyncio.get_running_loop())
-    asyncio.create_task(broadcast_loop())
-
 async def broadcast_loop():
     while True:
         state = await state_queue.get()
         await manager.broadcast(state)
 
-@app.get("/")
-async def get_dashboard():
-    try:
-        with open(DASHBOARD_PATH, "r") as f:
-            return HTMLResponse(f.read())
-    except FileNotFoundError:
-        return HTMLResponse("<h1>Dashboard index.html not found.</h1>")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global runner
+    runner = SumoRunner(state_queue, asyncio.get_running_loop())
+    asyncio.create_task(broadcast_loop())
+    yield
+
+app = FastAPI(title="MAESTRO-FL Dashboard", lifespan=lifespan)
 
 @app.post("/start")
 async def start_sim(condition: str = "fixed_timer"):
@@ -100,3 +91,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # For now, commands are primarily handled via POST routes
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+# Serve the dashboard directory (index.html, style.css, app.js, etc.)
+# Must be mounted AFTER route definitions so API routes take priority
+app.mount("/", StaticFiles(directory=DASHBOARD_DIR, html=True), name="static")
