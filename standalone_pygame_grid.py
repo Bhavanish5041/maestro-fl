@@ -54,6 +54,8 @@ nodes = {
 # In our edges, "dir_num" represents the phase that allows this edge to enter the intersection.
 class Edge:
     def __init__(self, start_node, end_node, target_intersection=None, phase_idx=None):
+        self.start_name = start_node
+        self.end_name = end_node
         self.start = nodes[start_node]
         self.end = nodes[end_node]
         self.target_intersection = target_intersection
@@ -99,6 +101,56 @@ edges = {
     'BR->S_BR': Edge('BR', 'S_BR')
 }
 
+# Build adjacency map: node_name -> list of (edge_id, Edge) for outgoing edges
+outer_nodes = {'N_TL', 'N_TR', 'S_BL', 'S_BR', 'W_TL', 'W_BL', 'E_TR', 'E_BR'}
+_adjacency = {}
+for eid, e in edges.items():
+    _adjacency.setdefault(e.start_name, []).append((eid, e))
+
+def generate_random_route(min_hops=2, max_hops=4):
+    """Walk the edge graph randomly from a spawn node, avoiding U-turns, for 2-4 hops."""
+    # Pick a random entry edge (start node is an outer spawn node)
+    entry_edges = [(eid, e) for eid, e in edges.items() if e.start_name in outer_nodes]
+    if not entry_edges:
+        return None
+    
+    first_eid, first_edge = random.choice(entry_edges)
+    route = [first_eid]
+    target_hops = random.randint(min_hops, max_hops)
+    
+    current_end = first_edge.end_name
+    prev_start = first_edge.start_name
+    
+    for _ in range(target_hops - 1):
+        # Reached an outer exit node? Stop.
+        if current_end in outer_nodes:
+            break
+        
+        # Find all outgoing edges from current_end, excluding U-turn back to prev_start
+        candidates = [
+            (eid, e) for eid, e in _adjacency.get(current_end, [])
+            if e.end_name != prev_start
+        ]
+        if not candidates:
+            break
+        
+        next_eid, next_edge = random.choice(candidates)
+        route.append(next_eid)
+        prev_start = current_end
+        current_end = next_edge.end_name
+    
+    # If we ended at an intersection (not an outer node), add an exit edge
+    if current_end not in outer_nodes:
+        exit_candidates = [
+            (eid, e) for eid, e in _adjacency.get(current_end, [])
+            if e.end_name in outer_nodes
+        ]
+        if exit_candidates:
+            exit_eid, _ = random.choice(exit_candidates)
+            route.append(exit_eid)
+    
+    return route
+
 class Intersection:
     def __init__(self, id_name):
         self.id = id_name
@@ -110,6 +162,8 @@ class Intersection:
         self.priority_mode = False
         self.priority_direction = -1
         self.active_ambulances = []
+        # Relay message queue: holds a dict when a relay is "in flight" toward this intersection
+        self.pending_relay = None
         
         # Signal draw positions (scaled)
         cx, cy = nodes[id_name]
@@ -141,6 +195,10 @@ ring_effects = []
 
 # Ambulance HUD state (set by inject_ambulance, read by main loop)
 ambulance_active = None
+
+# Event log for relay messages (last 3 lines, rendered top-right)
+relay_event_log = []
+RELAY_HOP_DELAY = 10  # frames (~0.17s at 60fps) short transmission delay for real-time relay
 
 class RingEffect:
     def __init__(self, x, y):
@@ -256,6 +314,10 @@ class Vehicle(pygame.sprite.Sprite):
             self.pos = 0.0
             self.edge.vehicles.append(self)
             self._load_image()
+            
+            # --- Real-time relay: ambulance commits to next edge, notify the intersection AHEAD ---
+            if self.is_ambulance:
+                _fire_realtime_relay(self, self.edge_idx)
 
     def render(self, surface):
         # Map 1D pos to 2D coords
@@ -298,19 +360,53 @@ def generate_route():
     v_type = random.choice(['car', 'car', 'bus', 'truck', 'bike'])
     Vehicle(route, v_type)
 
+def _activate_relay_at(inter, amb, phase_idx, route_idx):
+    """Apply priority at an intersection. No forward scheduling — relays are fired in real time by Vehicle.move()."""
+    inter.active_ambulances.append((amb, phase_idx, route_idx))
+    if not inter.priority_mode:
+        inter.priority_mode = True
+        inter.priority_direction = phase_idx
+    ring_effects.append(RingEffect(*inter.signalCoods[phase_idx]))
+    # Log the event
+    tick = pygame.time.get_ticks()
+    relay_event_log.append(f"[{tick/1000:.1f}s] {inter.id} received priority — locking green")
+    if len(relay_event_log) > 3:
+        relay_event_log.pop(0)
+
+def _fire_realtime_relay(amb_vehicle, current_edge_idx):
+    """Called when an ambulance enters a new edge. Notifies the NEXT intersection ahead via pending_relay."""
+    route = amb_vehicle.route
+    # Look ahead from current_edge_idx to find the next intersection we haven't registered with yet
+    for i in range(current_edge_idx, len(route)):
+        e = edges[route[i]]
+        if e.target_intersection:
+            next_inter = intersections[e.target_intersection]
+            # Only schedule if not already in priority mode for this ambulance
+            already_registered = any(a[0] is amb_vehicle for a in next_inter.active_ambulances)
+            if not already_registered and next_inter.pending_relay is None:
+                next_inter.pending_relay = {
+                    'amb': amb_vehicle,
+                    'phase_idx': e.phase_idx,
+                    'route_idx': i,
+                    'eta_ticks': RELAY_HOP_DELAY
+                }
+            break
+
 def inject_ambulance():
     global ambulance_active
     # Only one ambulance at a time for clean demo narration
     if any(getattr(v, 'is_ambulance', False) for v in simulation):
         return
-        
-    paths = [
-        ['W_TL->TL', 'TL->TR', 'TR->E_TR'],  # Left to Right Top
-        ['W_BL->BL', 'BL->BR', 'BR->E_BR'],  # Left to Right Bottom
-        ['N_TL->TL', 'TL->BL', 'BL->S_BL'],  # Top to Bottom Left
-        ['N_TR->TR', 'TR->BR', 'BR->S_BR']   # Top to Bottom Right
-    ]
-    route = random.choice(paths)
+    
+    # Generate a random route through the grid
+    route = None
+    for _ in range(10):
+        candidate = generate_random_route()
+        if candidate and len(candidate) >= 2:
+            route = candidate
+            break
+    if route is None:
+        return  # Could not generate a valid route
     
     # Clear non-ambulance vehicles in route to make way
     for edge_id in route:
@@ -337,16 +433,14 @@ def inject_ambulance():
         'completed_tick': None
     }
     
-    # Register with all intersections in its route
+    # Only notify the FIRST intersection immediately — all downstream notifications
+    # are fired in real time by Vehicle.move() as the ambulance commits to each edge.
     for edge_id in route:
         e = edges[edge_id]
         if e.target_intersection:
             inter = intersections[e.target_intersection]
-            inter.active_ambulances.append((amb, e.phase_idx, route.index(edge_id)))
-            if not inter.priority_mode:
-                inter.priority_mode = True
-                inter.priority_direction = e.phase_idx
-            ring_effects.append(RingEffect(*inter.signalCoods[e.phase_idx]))
+            _activate_relay_at(inter, amb, e.phase_idx, route.index(edge_id))
+            break  # Only the first one!
 
 def get_obs(inter):
     # 8-element obs vector for specific intersection
@@ -460,8 +554,10 @@ def main():
 
     sim_start_time = pygame.time.get_ticks()
 
+    frame_count = 0
     running = True
     while running:
+        frame_count += 1
         for event in pygame.event.get():
             if event.type == pygame.QUIT: running = False
             elif event.type == pygame.KEYDOWN:
@@ -479,6 +575,16 @@ def main():
                     generate_route()
             elif event.type == pygame.USEREVENT + 2:
                 handle_signals(rl_model, mode_state)
+
+        # ---- Process pending relays (hop-by-hop) ----
+        for inter in intersections.values():
+            if inter.pending_relay is not None:
+                inter.pending_relay['eta_ticks'] -= 1
+                if inter.pending_relay['eta_ticks'] <= 0:
+                    r = inter.pending_relay
+                    inter.pending_relay = None
+                    # Activate priority at this intersection (no forward scheduling — real-time relay)
+                    _activate_relay_at(inter, r['amb'], r['phase_idx'], r['route_idx'])
 
         screen.blit(background, (0, 0))
 
@@ -513,6 +619,18 @@ def main():
             cx, cy = nodes[inter.id]
             q_txt = font.render(f"Q:{total_queue}", True, q_color)
             screen.blit(q_txt, (cx - 40, cy - 20))
+            
+            # Visualize relay in flight: pulsing dot near intersection
+            if inter.pending_relay is not None:
+                pulse = abs(math.sin(frame_count * 0.15)) * 180 + 75  # 75-255 pulsing alpha
+                relay_surf = pygame.Surface((30, 30), pygame.SRCALPHA)
+                pygame.draw.circle(relay_surf, (255, 160, 50, int(pulse)), (15, 15), 12)
+                pygame.draw.circle(relay_surf, (255, 220, 100, int(pulse * 0.6)), (15, 15), 6)
+                screen.blit(relay_surf, (cx - 15, cy - 50))
+                # Small label
+                eta_s = inter.pending_relay['eta_ticks'] / 60.0
+                eta_txt = font.render(f"relay: {eta_s:.1f}s", True, (255, 200, 80))
+                screen.blit(eta_txt, (cx - 30, cy - 70))
 
         # Move & render vehicles
         for v in simulation:
@@ -529,7 +647,7 @@ def main():
             if pygame.time.get_ticks() - ambulance_active['completed_tick'] > 3000:
                 ambulance_active = None
 
-        # UI HUD Panel
+        # UI HUD Panel (left side)
         hud_height = 160
         if ambulance_active is not None:
             hud_height = 220
@@ -562,6 +680,15 @@ def main():
             amb_line2 = f"Signals cleared: {ambulance_active['cleared_count']}/{ambulance_active['total_intersections']}"
             screen.blit(font.render(amb_line1, True, amb_color1), (20, 132))
             screen.blit(font.render(amb_line2, True, (255, 255, 255)), (20, 156))
+
+        # Event log panel (top-right corner)
+        if relay_event_log:
+            log_bg = pygame.Surface((450, 20 + len(relay_event_log) * 22), pygame.SRCALPHA)
+            log_bg.fill((0, 0, 0, 160))
+            screen.blit(log_bg, (screenWidth - 460, 10))
+            for li, line in enumerate(relay_event_log):
+                log_txt = font.render(line, True, (255, 200, 100))
+                screen.blit(log_txt, (screenWidth - 450, 15 + li * 22))
 
         pygame.display.flip()
         clock.tick(60)
